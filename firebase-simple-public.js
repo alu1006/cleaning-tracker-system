@@ -1,15 +1,15 @@
 // 簡化版 Firebase 整合（公開版本）
 // 使用前請先設定你的 Firebase 配置
 
-// Firebase 配置 - 請替換為你的專案配置
+// Firebase 配置
 const firebaseConfig = {
-    apiKey: "請替換為你的-api-key",
-    authDomain: "your-project.firebaseapp.com", 
-    projectId: "your-project-id",
-    storageBucket: "your-project.firebasestorage.app",
-    messagingSenderId: "your-sender-id",
-    appId: "your-app-id",
-    measurementId: "your-measurement-id"
+    apiKey: "AIzaSyDpgytqeXPH-6ec1IIIs84UuDhNISO7bUc",
+    authDomain: "cleaning-tracker-2025.firebaseapp.com",
+    projectId: "cleaning-tracker-2025",
+    storageBucket: "cleaning-tracker-2025.firebasestorage.app",
+    messagingSenderId: "1031453638079",
+    appId: "1:1031453638079:web:fcbcd62e827fb3f2db350a",
+    measurementId: "G-HZH8C1S3C7"
 };
 
 // 初始化 Firebase
