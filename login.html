@@ -35,10 +35,12 @@
                 <h3>🔥 Firebase 雲端帳號</h3>
                 <p>📧 請使用電子信箱和密碼登入</p>
                 <p>🆕 首次使用請點擊「註冊新帳號」</p>
-                <div id="demo-accounts" style="display: none;">
-                    <h4>示範帳號（如已建立）：</h4>
-                    <p><strong>管理員：</strong>admin@demo.com / admin123</p>
-                    <p><strong>使用者：</strong>user1@demo.com / user123</p>
+                <div id="admin-info" style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 4px; border-left: 3px solid #ffc107;">
+                    <h4>🔑 管理員登入</h4>
+                    <p><strong>系統內建管理員帳號：</strong></p>
+                    <p>📧 Email: <code>admin@cleaning-system.internal</code></p>
+                    <p>🔒 Password: <code>CleanAdmin2025!</code></p>
+                    <small style="color: #856404;">⚠️ 管理員帳號不開放註冊，僅限內建帳號使用</small>
                 </div>
             </div>
         </div>
@@ -86,9 +88,9 @@
                 let result;
                 
                 if (isRegistering) {
-                    // 註冊新使用者
-                    const role = email.includes('admin') ? 'admin' : 'user';
-                    const name = email.includes('admin') ? '管理員' : '使用者';
+                    // 註冊新使用者 - 只允許註冊一般使用者，不允許註冊管理員
+                    const role = 'user';
+                    const name = '使用者';
                     
                     result = await window.firebaseService.createUser(email, password, {
                         role: role,
@@ -143,21 +145,35 @@
                         
                         console.log('使用者資訊已儲存，檢查是否有現有資料...');
                         
-                        // 檢查是否已有匯入資料，決定跳轉目標
+                        // 根據使用者角色決定跳轉目標
                         setTimeout(async () => {
                             try {
-                                const userDataResult = await firebase.firestore().collection('userData').doc(result.user.uid).get();
+                                const userRole = userData.role || 'user';
                                 
-                                if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
-                                    console.log('偵測到完整資料（包含分配），跳轉到追蹤頁面');
+                                if (userRole === 'admin') {
+                                    // 管理員直接跳轉到追蹤頁面管理所有使用者
+                                    console.log('管理員登入，跳轉到追蹤頁面');
                                     window.location.href = 'tracking.html';
                                 } else {
-                                    console.log('未偵測到完整資料，跳轉到匯入頁面');
-                                    window.location.href = 'import.html';
+                                    // 一般使用者檢查是否已有資料
+                                    const userDataResult = await firebase.firestore().collection('userData').doc(result.user.uid).get();
+                                    
+                                    if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
+                                        console.log('偵測到完整資料（包含分配），跳轉到追蹤頁面');
+                                        window.location.href = 'tracking.html';
+                                    } else {
+                                        console.log('未偵測到完整資料，跳轉到匯入頁面');
+                                        window.location.href = 'import.html';
+                                    }
                                 }
                             } catch (error) {
-                                console.warn('無法檢查現有資料，預設跳轉到匯入頁面:', error);
-                                window.location.href = 'import.html';
+                                console.warn('無法檢查現有資料:', error);
+                                // 預設行為：管理員到追蹤，其他到匯入
+                                if (userData.role === 'admin') {
+                                    window.location.href = 'tracking.html';
+                                } else {
+                                    window.location.href = 'import.html';
+                                }
                             }
                         }, 300);
                         
@@ -178,24 +194,43 @@
             }
         });
         
+        // 防止在管理員帳號建立期間觸發跳轉
+        let isCreatingAdmin = false;
+        
         // 檢查是否已經登入
         window.firebaseService.onAuthStateChanged(async (user) => {
-            if (user) {
-                // 使用者已登入，檢查是否有完整資料決定跳轉位置
-                try {
-                    const userDataResult = await firebase.firestore().collection('userData').doc(user.uid).get();
-                    
-                    if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
-                        console.log('用戶已登入且有完整資料，跳轉到追蹤頁面');
-                        window.location.href = 'tracking.html';
-                    } else {
-                        console.log('用戶已登入但沒有完整資料，跳轉到匯入頁面');
-                        window.location.href = 'import.html';
+            if (user && !isCreatingAdmin) {
+                // 短暫延遲，避免在帳號建立過程中跳轉
+                setTimeout(async () => {
+                    if (window.firebaseService.auth.currentUser) {
+                        // 使用者已登入，根據角色決定跳轉位置
+                        try {
+                            // 先取得使用者角色
+                            const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
+                            const userData = userDoc.data();
+                            const userRole = userData?.role || 'user';
+                            
+                            if (userRole === 'admin') {
+                                console.log('管理員已登入，跳轉到追蹤頁面');
+                                window.location.href = 'tracking.html';
+                            } else {
+                                // 一般使用者檢查是否有完整資料
+                                const userDataResult = await firebase.firestore().collection('userData').doc(user.uid).get();
+                                
+                                if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
+                                    console.log('用戶已登入且有完整資料，跳轉到追蹤頁面');
+                                    window.location.href = 'tracking.html';
+                                } else {
+                                    console.log('用戶已登入但沒有完整資料，跳轉到匯入頁面');
+                                    window.location.href = 'import.html';
+                                }
+                            }
+                        } catch (error) {
+                            console.warn('檢查現有資料時發生錯誤，預設跳轉到匯入頁面:', error);
+                            window.location.href = 'import.html';
+                        }
                     }
-                } catch (error) {
-                    console.warn('檢查現有資料時發生錯誤，預設跳轉到匯入頁面:', error);
-                    window.location.href = 'import.html';
-                }
+                }, 500);
             }
         });
         

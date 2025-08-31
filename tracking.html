@@ -39,11 +39,11 @@
         </div>
 
         <div class="user-selector" id="userSelector" style="display: none;">
-            <label for="selectedUser">選擇使用者：</label>
+            <label for="selectedUser">選擇要查看的使用者：</label>
             <select id="selectedUser">
-                <option value="user1">使用者1</option>
-                <option value="user2">使用者2</option>
+                <option value="">載入中...</option>
             </select>
+            <div class="user-info-display" id="selectedUserInfo"></div>
         </div>
 
         <div id="trackingTable" class="tracking-table-container">
@@ -91,8 +91,18 @@
                 
                 document.getElementById('userInfo').textContent = `${userName} (${userRole === 'admin' ? '管理員' : '使用者'})`;
                 
-                // 如果是管理員，載入所有使用者
+                // 如果是管理員，添加管理面板按鈕並載入所有使用者
                 if (userRole === 'admin') {
+                    // 添加管理面板按鈕
+                    const adminBtn = document.createElement('button');
+                    adminBtn.textContent = '🔑 管理面板';
+                    adminBtn.className = 'secondary-btn';
+                    adminBtn.onclick = () => window.location.href = 'admin-panel.html';
+                    
+                    const navUser = document.querySelector('.nav-user');
+                    const importBtn = navUser.querySelector('button');
+                    navUser.insertBefore(adminBtn, importBtn);
+                    
                     await loadAllUsers();
                 }
                 
@@ -127,19 +137,55 @@
             const selector = document.getElementById('selectedUser');
             selector.innerHTML = '';
             
+            // 添加所有使用者（包含管理員自己）
             Object.entries(allUsers).forEach(([userId, user]) => {
-                if (user.role !== 'admin') { // 不顯示管理員帳號
-                    const option = document.createElement('option');
-                    option.value = userId;
-                    option.textContent = user.name || user.email;
-                    selector.appendChild(option);
-                }
+                const option = document.createElement('option');
+                option.value = userId;
+                const roleText = user.role === 'admin' ? ' (管理員)' : ' (使用者)';
+                option.textContent = `${user.name || user.email}${roleText}`;
+                selector.appendChild(option);
             });
             
-            // 預設選擇第一個使用者
-            if (selector.options.length > 0) {
-                selectedUser = selector.options[0].value;
+            // 預設選擇第一個有資料的使用者，如果沒有就選第一個
+            let defaultUserId = null;
+            for (const [userId, user] of Object.entries(allUsers)) {
+                if (user.role !== 'admin') { // 優先選擇非管理員使用者
+                    defaultUserId = userId;
+                    break;
+                }
             }
+            
+            if (!defaultUserId && selector.options.length > 0) {
+                defaultUserId = selector.options[0].value;
+            }
+            
+            if (defaultUserId) {
+                selector.value = defaultUserId;
+                selectedUser = defaultUserId;
+                updateSelectedUserInfo();
+            }
+        }
+
+        // 更新選中使用者的資訊顯示
+        function updateSelectedUserInfo() {
+            const infoDiv = document.getElementById('selectedUserInfo');
+            if (!selectedUser || !allUsers[selectedUser]) {
+                infoDiv.innerHTML = '';
+                return;
+            }
+            
+            const user = allUsers[selectedUser];
+            const roleClass = user.role === 'admin' ? 'role-admin' : 'role-user';
+            const roleName = user.role === 'admin' ? '管理員' : '使用者';
+            
+            infoDiv.innerHTML = `
+                <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; border-left: 3px solid #007bff;">
+                    <strong>📊 正在查看：</strong>
+                    <span style="margin-left: 10px;">${user.name || user.email}</span>
+                    <span class="${roleClass}" style="margin-left: 10px;">${roleName}</span>
+                    <br><small style="color: #666; margin-top: 5px;">Email: ${user.email}</small>
+                </div>
+            `;
         }
 
         // 初始化頁面
@@ -150,12 +196,8 @@
             // 如果是管理員，顯示使用者選擇器
             if (userRole === 'admin') {
                 document.getElementById('userSelector').style.display = 'block';
-                await loadAllUsers();
-                // 管理員預設選擇第一個一般使用者
-                const selector = document.getElementById('selectedUser');
-                if (selector.options.length > 0) {
-                    selectedUser = selector.options[0].value;
-                }
+                // 管理員預設查看第一個有資料的使用者
+                updateUserSelector();
             }
             
             console.log('初始化頁面，選擇的使用者:', selectedUser);
@@ -187,6 +229,7 @@
         document.getElementById('selectedUser')?.addEventListener('change', async (e) => {
             selectedUser = e.target.value;
             console.log('使用者選擇變更為:', selectedUser);
+            updateSelectedUserInfo();
             await generateTrackingTable();
         });
 
@@ -337,6 +380,7 @@
                         const cellKey = `${taskIndex}-${studentKey}-${dateKey}`;
                         
                         const currentStatus = trackingData[cellKey] || 'empty';
+                        // 管理員可以編輯所有資料，一般使用者只能編輯自己的資料
                         const cellClass = userRole === 'admin' || selectedUser === currentUser?.uid ? 'clickable' : '';
                         
                         tableHTML += `<td class="tracking-cell ${cellClass}" data-key="${cellKey}" data-student="${studentKey}">`;
@@ -357,12 +401,15 @@
             document.getElementById('trackingTable').innerHTML = tableHTML;
 
             // 添加點擊事件
-            // 為所有可點擊的單元格添加事件監聽器
+            // 管理員可以修改任何人的資料，一般使用者只能修改自己的
             console.log('綁定點擊事件，使用者角色:', userRole);
             console.log('選擇的使用者:', selectedUser);
             console.log('當前使用者 UID:', currentUser?.uid);
             
-            if (userRole === 'admin' || selectedUser === currentUser?.uid) {
+            // 管理員可以修改所有人的資料，一般使用者只能修改自己的資料
+            const canEdit = userRole === 'admin' || selectedUser === currentUser?.uid;
+            
+            if (canEdit) {
                 const clickableCells = document.querySelectorAll('.tracking-cell.clickable');
                 console.log('找到可點擊單元格數量:', clickableCells.length);
                 
@@ -370,6 +417,19 @@
                     cell.addEventListener('click', handleCellClick);
                     cell.style.cursor = 'pointer'; // 顯示指針游標
                 });
+            } else {
+                // 如果無權編輯，顯示提示
+                const trackingTable = document.getElementById('trackingTable');
+                if (trackingTable && !trackingTable.querySelector('.no-edit-notice')) {
+                    const notice = document.createElement('div');
+                    notice.className = 'no-edit-notice';
+                    notice.innerHTML = `
+                        <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                            <strong>📖 檢視模式</strong> - 您只能查看此資料，無法修改
+                        </div>
+                    `;
+                    trackingTable.insertBefore(notice, trackingTable.firstChild);
+                }
             }
 
             // 顯示統計資訊

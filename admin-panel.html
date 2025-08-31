@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統管理面板 - 打掃追蹤系統</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <h1>🔑 系統管理面板</h1>
+            <div class="nav-user">
+                <span id="userInfo"></span>
+                <button onclick="goToImport()" class="secondary-btn">📋 資料匯入</button>
+                <button onclick="goToTracking()" class="secondary-btn">📊 追蹤頁面</button>
+                <button onclick="logout()" class="logout-btn">登出</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="admin-section">
+            <h2>👥 所有使用者帳號</h2>
+            <div class="account-stats">
+                <div class="stat-card">
+                    <h3 id="adminCount">0</h3>
+                    <p>管理員</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="userCount">0</h3>
+                    <p>一般使用者</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalCount">0</h3>
+                    <p>總計帳號</p>
+                </div>
+            </div>
+            
+            <div class="accounts-table">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>使用者ID</th>
+                            <th>電子信箱</th>
+                            <th>顯示名稱</th>
+                            <th>角色</th>
+                            <th>註冊時間</th>
+                            <th>資料狀態</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsTableBody">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 20px;">
+                                <div class="loading">⏳ 載入中...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="admin-section">
+            <h2>📊 系統統計</h2>
+            <div id="systemStats" class="system-stats">
+                <p>載入中...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let allUsers = [];
+
+        // 檢查登入狀態和權限
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                await checkAdminPermission();
+                await loadUserInfo();
+                await loadAllAccounts();
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+
+        // 檢查管理員權限
+        async function checkAdminPermission() {
+            if (!currentUser) return;
+            
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
+                const userData = userDoc.data();
+                
+                if (!userData || userData.role !== 'admin') {
+                    alert('❌ 存取被拒：只有管理員可以進入此頁面');
+                    window.location.href = 'tracking.html';
+                    return;
+                }
+            } catch (error) {
+                console.error('檢查權限錯誤:', error);
+                alert('❌ 無法驗證權限，請重新登入');
+                window.location.href = 'login.html';
+            }
+        }
+
+        // 載入使用者資訊
+        async function loadUserInfo() {
+            if (!currentUser) return;
+            
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
+                const userData = userDoc.data();
+                
+                document.getElementById('userInfo').textContent = 
+                    `${userData?.name || currentUser.email} (管理員)`;
+            } catch (error) {
+                console.error('載入使用者資訊錯誤:', error);
+            }
+        }
+
+        // 載入所有帳號
+        async function loadAllAccounts() {
+            try {
+                const result = await window.firebaseService.getAllUsers();
+                
+                if (result.success) {
+                    allUsers = result.users;
+                    displayAccounts();
+                    updateStats();
+                } else {
+                    console.error('載入帳號失敗:', result.error);
+                    document.getElementById('accountsTableBody').innerHTML = `
+                        <tr><td colspan="7" style="text-align: center; color: red;">
+                            ❌ 載入失敗: ${result.error}
+                        </td></tr>
+                    `;
+                }
+            } catch (error) {
+                console.error('載入所有帳號錯誤:', error);
+                document.getElementById('accountsTableBody').innerHTML = `
+                    <tr><td colspan="7" style="text-align: center; color: red;">
+                        ❌ 系統錯誤，請重新整理頁面
+                    </td></tr>
+                `;
+            }
+        }
+
+        // 顯示帳號列表
+        function displayAccounts() {
+            const tbody = document.getElementById('accountsTableBody');
+            
+            if (allUsers.length === 0) {
+                tbody.innerHTML = `
+                    <tr><td colspan="7" style="text-align: center;">
+                        📝 尚未有其他使用者註冊
+                    </td></tr>
+                `;
+                return;
+            }
+            
+            let html = '';
+            allUsers.forEach(user => {
+                const createdAt = user.createdAt ? 
+                    new Date(user.createdAt.seconds * 1000).toLocaleDateString('zh-TW') : 
+                    '未知';
+                
+                const roleClass = user.role === 'admin' ? 'role-admin' : 'role-user';
+                const roleName = user.role === 'admin' ? '管理員' : '使用者';
+                
+                html += `
+                    <tr>
+                        <td><code>${user.id.substring(0, 8)}...</code></td>
+                        <td>${user.email}</td>
+                        <td>${user.name || '未設定'}</td>
+                        <td><span class="${roleClass}">${roleName}</span></td>
+                        <td>${createdAt}</td>
+                        <td><button class="check-btn" onclick="checkUserData('${user.id}')">檢查資料</button></td>
+                        <td><button class="view-btn" onclick="viewUserData('${user.id}')">查看詳情</button></td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+        }
+
+        // 更新統計
+        function updateStats() {
+            const adminCount = allUsers.filter(user => user.role === 'admin').length;
+            const userCount = allUsers.filter(user => user.role !== 'admin').length;
+            const totalCount = allUsers.length;
+            
+            document.getElementById('adminCount').textContent = adminCount;
+            document.getElementById('userCount').textContent = userCount;
+            document.getElementById('totalCount').textContent = totalCount;
+        }
+
+        // 檢查使用者資料
+        async function checkUserData(userId) {
+            try {
+                const [userData, trackingData] = await Promise.all([
+                    window.firebaseService.getUserData(userId),
+                    window.firebaseService.getTrackingData(userId)
+                ]);
+                
+                const hasCleaningTasks = userData.success && userData.data?.cleaningTasks?.length > 0;
+                const hasStudents = userData.success && userData.data?.students?.length > 0;
+                const hasAssignments = userData.success && userData.data?.assignments;
+                const hasTrackingData = trackingData.success && Object.keys(trackingData.data || {}).length > 0;
+                
+                let status = '📝 尚未匯入資料';
+                if (hasCleaningTasks && hasStudents && hasAssignments) {
+                    status = hasTrackingData ? 
+                        '✅ 完整資料 + 追蹤記錄' : 
+                        '⚠️ 已匯入資料，尚未開始追蹤';
+                } else if (hasCleaningTasks || hasStudents) {
+                    status = '🔄 部分資料已匯入';
+                }
+                
+                alert(`使用者資料狀態：\n\n${status}\n\n詳細：\n- 打掃事項: ${hasCleaningTasks ? '✅' : '❌'}\n- 學生名單: ${hasStudents ? '✅' : '❌'}\n- 任務分配: ${hasAssignments ? '✅' : '❌'}\n- 追蹤記錄: ${hasTrackingData ? '✅' : '❌'}`);
+            } catch (error) {
+                alert('檢查資料時發生錯誤: ' + error.message);
+            }
+        }
+
+        // 查看使用者詳情
+        function viewUserData(userId) {
+            // 在tracking頁面中查看特定使用者的資料
+            const trackingUrl = `tracking.html?viewUser=${userId}`;
+            window.open(trackingUrl, '_blank');
+        }
+
+        // 登出功能
+        async function logout() {
+            try {
+                await window.firebaseService.signOut();
+                window.location.href = 'login.html';
+            } catch (error) {
+                console.error('登出錯誤:', error);
+                alert('登出失敗，請稍後再試');
+            }
+        }
+
+        // 導航函數
+        function goToImport() {
+            window.location.href = 'import.html';
+        }
+
+        function goToTracking() {
+            window.location.href = 'tracking.html';
+        }
+    </script>
+</body>
+</html>

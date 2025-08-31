@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打掃追蹤系統 - 管理員面板</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <h1>🔑 管理員面板</h1>
+            <div class="nav-user">
+                <span id="userInfo"></span>
+                <button onclick="goToImport()" class="secondary-btn">📋 匯入資料</button>
+                <button onclick="logout()" class="logout-btn">登出</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="admin-header">
+            <h2>👨‍🏫 老師帳號管理</h2>
+            <div class="info-box" style="margin-bottom: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                <p><strong>🔑 管理員權限：</strong></p>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>📊 查看所有老師的帳號資料和打掃設定</li>
+                    <li>👥 監控每位老師管理的學生數量</li>
+                    <li>🔍 檢視學生總覽和分配狀況</li>
+                    <li>🛠️ 協助老師解決帳號和權限問題</li>
+                </ul>
+            </div>
+            <div class="admin-stats">
+                <div class="stat-card">
+                    <span class="stat-number" id="teacherCount">0</span>
+                    <span class="stat-label">老師總數</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="studentCount">0</span>
+                    <span class="stat-label">學生總數</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="teacher-management">
+            <div class="section-header">
+                <h3>📋 所有老師列表</h3>
+                <button onclick="refreshData()" class="secondary-btn">🔄 重新整理</button>
+            </div>
+            
+            <div id="teachersList" class="teachers-list">
+                <div class="loading">載入中...</div>
+            </div>
+        </div>
+
+        <div class="student-overview">
+            <div class="section-header">
+                <h3>👨‍🎓 學生總覽</h3>
+                <select id="teacherFilter" onchange="filterStudents()">
+                    <option value="">所有老師的學生</option>
+                </select>
+            </div>
+            
+            <div id="studentsList" class="students-list">
+                <div class="loading">載入中...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple-public.js"></script>
+    <script src="firestore-service.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let userRole = null;
+        let allTeachers = {};
+        let allStudents = {};
+
+        // Firebase 驗證狀態監聽
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadUserInfo();
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+
+        // 載入使用者資訊並檢查權限
+        async function loadUserInfo() {
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
+                const userData = userDoc.data();
+                
+                userRole = userData?.role || 'student';
+                
+                // 檢查是否為管理員
+                if (userRole !== 'admin') {
+                    alert('❌ 此頁面僅限管理員存取');
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                document.getElementById('userInfo').textContent = 
+                    `${userData?.name || currentUser.email} (管理員)`;
+                
+                // 載入所有資料
+                await loadAllData();
+                
+            } catch (error) {
+                console.error('載入使用者資訊錯誤:', error);
+                alert('載入失敗，請重新登入');
+                window.location.href = 'login.html';
+            }
+        }
+
+        // 載入所有老師和學生資料
+        async function loadAllData() {
+            try {
+                // 載入所有使用者
+                const usersSnapshot = await window.firebaseService.db.collection('users').get();
+                const teachers = [];
+                
+                usersSnapshot.forEach(doc => {
+                    const userData = doc.data();
+                    if (userData.role === 'teacher') {
+                        allTeachers[doc.id] = {
+                            id: doc.id,
+                            ...userData
+                        };
+                        teachers.push(allTeachers[doc.id]);
+                    }
+                });
+
+                // 載入所有學生
+                const studentsSnapshot = await window.firebaseService.db.collection('students').get();
+                allStudents = {};
+                
+                studentsSnapshot.forEach(doc => {
+                    allStudents[doc.id] = {
+                        id: doc.id,
+                        ...doc.data()
+                    };
+                });
+
+                // 更新統計和列表
+                updateStats();
+                displayTeachers(teachers);
+                displayStudents();
+                updateTeacherFilter();
+                
+            } catch (error) {
+                console.error('載入資料錯誤:', error);
+                alert('載入資料失敗');
+            }
+        }
+
+        // 更新統計數據
+        function updateStats() {
+            const teacherCount = Object.keys(allTeachers).length;
+            const studentCount = Object.keys(allStudents).length;
+            
+            document.getElementById('teacherCount').textContent = teacherCount;
+            document.getElementById('studentCount').textContent = studentCount;
+        }
+
+        // 顯示老師列表
+        function displayTeachers(teachers) {
+            const container = document.getElementById('teachersList');
+            
+            if (teachers.length === 0) {
+                container.innerHTML = '<div class="no-data">📝 尚無老師帳號</div>';
+                return;
+            }
+
+            const teachersHTML = teachers.map(teacher => {
+                const studentCount = Object.values(allStudents).filter(s => s.teacherId === teacher.id).length;
+                
+                return `
+                    <div class="teacher-card">
+                        <div class="teacher-info">
+                            <h4>👨‍🏫 ${teacher.name || '未命名'}</h4>
+                            <p>📧 ${teacher.email}</p>
+                            <p>👨‍🎓 管理學生: ${studentCount} 人</p>
+                            <p>📅 建立時間: ${teacher.createdAt ? new Date(teacher.createdAt.toDate()).toLocaleDateString() : '未知'}</p>
+                        </div>
+                        <div class="teacher-actions">
+                            <button onclick="viewTeacherStudents('${teacher.id}')" class="primary-btn">查看學生</button>
+                            <button onclick="viewTeacherData('${teacher.id}')" class="secondary-btn">查看資料</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = teachersHTML;
+        }
+
+        // 顯示學生列表
+        function displayStudents(filterTeacherId = null) {
+            const container = document.getElementById('studentsList');
+            let studentsToShow = Object.values(allStudents);
+            
+            if (filterTeacherId) {
+                studentsToShow = studentsToShow.filter(s => s.teacherId === filterTeacherId);
+            }
+            
+            if (studentsToShow.length === 0) {
+                container.innerHTML = '<div class="no-data">📝 沒有學生資料</div>';
+                return;
+            }
+
+            const studentsHTML = studentsToShow.map(student => {
+                const teacher = allTeachers[student.teacherId];
+                const teacherName = teacher ? teacher.name || teacher.email : '未知老師';
+                
+                return `
+                    <div class="student-card compact">
+                        <div class="student-info">
+                            <h5>👨‍🎓 ${student.name || '未命名'}</h5>
+                            <p>🆔 ${student.studentNumber || '無學號'}</p>
+                            <p>📧 ${student.email}</p>
+                            <p>👨‍🏫 老師: ${teacherName}</p>
+                        </div>
+                        <div class="student-status">
+                            <span class="status-badge status-${student.status || 'active'}">
+                                ${student.status === 'active' ? '活躍' : '停用'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = studentsHTML;
+        }
+
+        // 更新老師過濾器
+        function updateTeacherFilter() {
+            const select = document.getElementById('teacherFilter');
+            select.innerHTML = '<option value="">所有老師的學生</option>';
+            
+            Object.values(allTeachers).forEach(teacher => {
+                const option = document.createElement('option');
+                option.value = teacher.id;
+                option.textContent = `${teacher.name || teacher.email}`;
+                select.appendChild(option);
+            });
+        }
+
+        // 過濾學生
+        function filterStudents() {
+            const teacherId = document.getElementById('teacherFilter').value;
+            displayStudents(teacherId || null);
+        }
+
+        // 查看特定老師的學生
+        function viewTeacherStudents(teacherId) {
+            const teacherFilter = document.getElementById('teacherFilter');
+            teacherFilter.value = teacherId;
+            filterStudents();
+            
+            // 滾動到學生區域
+            document.querySelector('.student-overview').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 查看老師資料
+        async function viewTeacherData(teacherId) {
+            try {
+                const result = await window.firebaseService.loadUserData(teacherId);
+                if (result.success && result.data) {
+                    const teacher = allTeachers[teacherId];
+                    const hasData = result.data.cleaningTasks && result.data.cleaningTasks.length > 0;
+                    
+                    alert(`👨‍🏫 ${teacher.name || teacher.email}\n\n` +
+                          `📋 打掃事項: ${result.data.cleaningTasks?.length || 0} 項\n` +
+                          `👥 學生分配: ${Object.keys(result.data.assignments || {}).length} 組\n` +
+                          `📊 資料狀態: ${hasData ? '已設定' : '未設定'}\n` +
+                          `📅 最後更新: ${result.data.lastUpdate ? new Date(result.data.lastUpdate.toDate()).toLocaleString() : '無'}`);
+                } else {
+                    alert('該老師尚未設定打掃資料');
+                }
+            } catch (error) {
+                console.error('載入老師資料錯誤:', error);
+                alert('載入資料失敗');
+            }
+        }
+
+        // 重新整理資料
+        async function refreshData() {
+            document.getElementById('teachersList').innerHTML = '<div class="loading">載入中...</div>';
+            document.getElementById('studentsList').innerHTML = '<div class="loading">載入中...</div>';
+            await loadAllData();
+        }
+
+        // 導航函數
+        function goToImport() {
+            window.location.href = 'import.html';
+        }
+
+        async function logout() {
+            try {
+                await window.firebaseService.signOut();
+                sessionStorage.clear();
+                window.location.href = 'login.html';
+            } catch (error) {
+                console.error('登出錯誤:', error);
+                alert('登出失敗，請稍後再試');
+            }
+        }
+    </script>
+</body>
+</html>
