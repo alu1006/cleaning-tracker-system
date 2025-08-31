@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打掃追蹤系統 - 追蹤頁面</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <h1>🧹 打掃追蹤系統</h1>
+            <div class="nav-user">
+                <span id="userInfo"></span>
+                <button onclick="goToImport()" class="secondary-btn">📋 修改分配</button>
+                <button onclick="logout()" class="logout-btn">登出</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="tracking-header">
+            <h2>📊 打掃追蹤表</h2>
+            <div class="controls">
+                <button id="prevWeek" class="control-btn">◀ 上週</button>
+                <span id="currentWeek" class="week-display"></span>
+                <button id="nextWeek" class="control-btn">下週 ▶</button>
+            </div>
+            <div class="legend">
+                <span class="legend-item">🏅 優點</span>
+                <span class="legend-item">😈 缺失</span>
+                <span class="legend-item warning">⚠️ 三次缺失警告</span>
+            </div>
+        </div>
+
+        <div class="user-selector" id="userSelector" style="display: none;">
+            <label for="selectedUser">選擇使用者：</label>
+            <select id="selectedUser">
+                <option value="user1">使用者1</option>
+                <option value="user2">使用者2</option>
+            </select>
+        </div>
+
+        <div id="trackingTable" class="tracking-table-container">
+            <div class="no-data">
+                <p>📝 尚未匯入資料</p>
+                <button onclick="goToImport()" class="primary-btn">前往匯入資料</button>
+            </div>
+        </div>
+
+        <div class="statistics" id="statisticsPanel" style="display: none;">
+            <h3>📈 統計資訊</h3>
+            <div id="statsContent"></div>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let userRole = null;
+        let userName = null;
+        let allUsers = {}; // 管理員用：儲存所有使用者資訊
+        
+        // 檢查登入狀態
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadUserInfo();
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+        
+        // 載入使用者資訊
+        async function loadUserInfo() {
+            if (!currentUser) return;
+            
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
+                const userData = userDoc.data();
+                
+                userName = userData?.name || currentUser.email;
+                userRole = userData?.role || 'user';
+                
+                document.getElementById('userInfo').textContent = `${userName} (${userRole === 'admin' ? '管理員' : '使用者'})`;
+                
+                // 如果是管理員，載入所有使用者
+                if (userRole === 'admin') {
+                    await loadAllUsers();
+                }
+                
+                // 初始化頁面
+                await initializePage();
+            } catch (error) {
+                console.error('載入使用者資訊錯誤:', error);
+            }
+        }
+        
+        // 載入所有使用者（管理員功能）
+        async function loadAllUsers() {
+            try {
+                const result = await window.firebaseService.getAllUsers();
+                if (result.success) {
+                    result.users.forEach(user => {
+                        allUsers[user.id] = user;
+                    });
+                    
+                    // 更新使用者選擇器
+                    updateUserSelector();
+                }
+            } catch (error) {
+                console.error('載入使用者清單錯誤:', error);
+            }
+        }
+        
+        // 更新使用者選擇器
+        function updateUserSelector() {
+            if (userRole !== 'admin') return;
+            
+            const selector = document.getElementById('selectedUser');
+            selector.innerHTML = '';
+            
+            Object.entries(allUsers).forEach(([userId, user]) => {
+                if (user.role !== 'admin') { // 不顯示管理員帳號
+                    const option = document.createElement('option');
+                    option.value = userId;
+                    option.textContent = user.name || user.email;
+                    selector.appendChild(option);
+                }
+            });
+            
+            // 預設選擇第一個使用者
+            if (selector.options.length > 0) {
+                selectedUser = selector.options[0].value;
+            }
+        }
+
+        // 初始化頁面
+        async function initializePage() {
+            // 設定預設選擇的使用者
+            selectedUser = currentUser?.uid;
+            
+            // 如果是管理員，顯示使用者選擇器
+            if (userRole === 'admin') {
+                document.getElementById('userSelector').style.display = 'block';
+                await loadAllUsers();
+                // 管理員預設選擇第一個一般使用者
+                const selector = document.getElementById('selectedUser');
+                if (selector.options.length > 0) {
+                    selectedUser = selector.options[0].value;
+                }
+            }
+            
+            console.log('初始化頁面，選擇的使用者:', selectedUser);
+            
+            // 初始化週次顯示和表格
+            updateWeekDisplay();
+            await generateTrackingTable();
+        }
+
+        let currentWeek = new Date();
+        let selectedUser = null; // 將在使用者登入後設定
+        let userData = null;
+        let trackingData = {};
+
+        // 週次導航
+        document.getElementById('prevWeek').addEventListener('click', async () => {
+            currentWeek.setDate(currentWeek.getDate() - 7);
+            updateWeekDisplay();
+            await generateTrackingTable();
+        });
+
+        document.getElementById('nextWeek').addEventListener('click', async () => {
+            currentWeek.setDate(currentWeek.getDate() + 7);
+            updateWeekDisplay();
+            await generateTrackingTable();
+        });
+
+        // 使用者選擇（管理員功能）
+        document.getElementById('selectedUser')?.addEventListener('change', async (e) => {
+            selectedUser = e.target.value;
+            console.log('使用者選擇變更為:', selectedUser);
+            await generateTrackingTable();
+        });
+
+        async function logout() {
+            try {
+                await window.firebaseService.signOut();
+                sessionStorage.clear();
+                window.location.href = 'login.html';
+            } catch (error) {
+                console.error('登出錯誤:', error);
+                alert('登出失敗，請稍後再試');
+            }
+        }
+
+        function goToImport() {
+            window.location.href = 'import.html';
+        }
+
+        function getWeekKey(date) {
+            const year = date.getFullYear();
+            const weekNum = getWeekNumber(date);
+            return `${year}-W${weekNum}`;
+        }
+
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+        }
+
+        function updateWeekDisplay() {
+            const startOfWeek = new Date(currentWeek);
+            startOfWeek.setDate(currentWeek.getDate() - currentWeek.getDay());
+            
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            
+            const formatDate = (date) => `${date.getMonth() + 1}/${date.getDate()}`;
+            
+            document.getElementById('currentWeek').textContent = 
+                `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)}`;
+        }
+
+        async function loadUserData() {
+            const targetUserId = selectedUser || currentUser?.uid;
+            if (!targetUserId) return false;
+            
+            try {
+                const [userDataResult, trackingResult] = await Promise.all([
+                    window.firebaseService.getUserData(targetUserId),
+                    window.firebaseService.getTrackingData(targetUserId)
+                ]);
+                
+                if (userDataResult.success && userDataResult.data) {
+                    userData = userDataResult.data;
+                    
+                    if (trackingResult.success) {
+                        trackingData = trackingResult.data || {};
+                    }
+                    
+                    return true;
+                }
+            } catch (error) {
+                console.error('載入使用者資料錯誤:', error);
+            }
+            return false;
+        }
+
+        async function generateTrackingTable() {
+            console.log('=== 開始生成追蹤表格 ===');
+            console.log('當前使用者 UID:', currentUser?.uid);
+            console.log('選擇的使用者:', selectedUser);
+            console.log('使用者角色:', userRole);
+            
+            const dataLoaded = await loadUserData();
+            console.log('資料載入結果:', dataLoaded);
+            console.log('使用者資料:', userData);
+            
+            if (!dataLoaded || !userData) {
+                console.log('❌ 資料載入失敗或資料為空');
+                document.getElementById('trackingTable').innerHTML = `
+                    <div class="no-data">
+                        <p>📝 尚未匯入資料</p>
+                        <button onclick="goToImport()" class="primary-btn">前往匯入資料</button>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 檢查必要資料
+            if (!userData.cleaningTasks || !userData.assignments) {
+                console.log('❌ 缺少必要資料');
+                console.log('cleaningTasks:', userData.cleaningTasks?.length);
+                console.log('assignments:', Object.keys(userData.assignments || {}).length);
+                document.getElementById('trackingTable').innerHTML = `
+                    <div class="no-data">
+                        <p>📝 資料不完整，請重新匯入</p>
+                        <button onclick="goToImport()" class="primary-btn">前往匯入資料</button>
+                    </div>
+                `;
+                return;
+            }
+            
+            console.log('✅ 資料檢查通過');
+            console.log('打掃事項數量:', userData.cleaningTasks.length);
+            console.log('分配任務數量:', Object.keys(userData.assignments).length);
+
+            const startOfWeek = new Date(currentWeek);
+            startOfWeek.setDate(currentWeek.getDate() - currentWeek.getDay());
+            
+            let tableHTML = '<table class="tracking-table"><thead><tr><th class="task-header">打掃事項 / 負責人</th>';
+            
+            // 生成日期標題
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(startOfWeek);
+                date.setDate(startOfWeek.getDate() + i);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+                tableHTML += `<th class="date-header">${dateStr}<br>(${weekdays[i]})</th>`;
+            }
+            tableHTML += '</tr></thead><tbody>';
+
+            // 生成任務行
+            userData.cleaningTasks.forEach((task, taskIndex) => {
+                const taskName = task['完整事項'] || task['事項'] || '未知事項';
+                const assignedStudents = userData.assignments[taskIndex] || [];
+                
+                if (assignedStudents.length === 0) return;
+
+                assignedStudents.forEach(studentKey => {
+                    // 將 uniqueKey 轉換回顯示格式
+                    const parts = studentKey.split('_');
+                    const displayName = parts.length >= 2 ? `${parts[0]} ${parts.slice(1).join('_')}` : studentKey;
+                    
+                    tableHTML += `<tr><td class="task-cell">
+                        <div class="task-info">
+                            <strong>${taskName}</strong>
+                            <div class="student-name">${displayName}</div>
+                        </div>
+                    </td>`;
+                    
+                    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                        const date = new Date(startOfWeek);
+                        date.setDate(startOfWeek.getDate() + dayIndex);
+                        const dateKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                        const cellKey = `${taskIndex}-${studentKey}-${dateKey}`;
+                        
+                        const currentStatus = trackingData[cellKey] || 'empty';
+                        const cellClass = userRole === 'admin' || selectedUser === currentUser?.uid ? 'clickable' : '';
+                        
+                        tableHTML += `<td class="tracking-cell ${cellClass}" data-key="${cellKey}" data-student="${studentKey}">`;
+                        
+                        if (currentStatus === 'merit') {
+                            tableHTML += '🏅';
+                        } else if (currentStatus === 'demerit') {
+                            tableHTML += '😈';
+                        }
+                        
+                        tableHTML += '</td>';
+                    }
+                    tableHTML += '</tr>';
+                });
+            });
+
+            tableHTML += '</tbody></table>';
+            document.getElementById('trackingTable').innerHTML = tableHTML;
+
+            // 添加點擊事件
+            // 為所有可點擊的單元格添加事件監聽器
+            console.log('綁定點擊事件，使用者角色:', userRole);
+            console.log('選擇的使用者:', selectedUser);
+            console.log('當前使用者 UID:', currentUser?.uid);
+            
+            if (userRole === 'admin' || selectedUser === currentUser?.uid) {
+                const clickableCells = document.querySelectorAll('.tracking-cell.clickable');
+                console.log('找到可點擊單元格數量:', clickableCells.length);
+                
+                clickableCells.forEach(cell => {
+                    cell.addEventListener('click', handleCellClick);
+                    cell.style.cursor = 'pointer'; // 顯示指針游標
+                });
+            }
+
+            // 顯示統計資訊
+            updateStatistics();
+        }
+
+        function handleCellClick(e) {
+            console.log('單元格被點擊');
+            
+            const cell = e.target;
+            const cellKey = cell.dataset.key;
+            const studentKey = cell.dataset.student;
+            
+            console.log('點擊的單元格:', cellKey, '學生:', studentKey);
+            
+            let currentStatus = trackingData[cellKey] || 'empty';
+            let newStatus;
+            
+            // 狀態循環：空白 → 🏅 → 😈 → 空白
+            switch (currentStatus) {
+                case 'empty':
+                    newStatus = 'merit';
+                    cell.innerHTML = '🏅';
+                    break;
+                case 'merit':
+                    newStatus = 'demerit';
+                    cell.innerHTML = '😈';
+                    break;
+                case 'demerit':
+                    newStatus = 'empty';
+                    cell.innerHTML = '';
+                    break;
+            }
+            
+            trackingData[cellKey] = newStatus;
+            console.log('更新狀態:', cellKey, '→', newStatus);
+            
+            saveTrackingData();
+            
+            // 檢查缺失警告
+            checkDemeritWarning(studentKey);
+            updateStatistics();
+        }
+
+        function checkDemeritWarning(studentKey) {
+            const weekKey = getWeekKey(currentWeek);
+            let demeritCount = 0;
+            
+            Object.keys(trackingData).forEach(key => {
+                if (key.includes(studentKey) && trackingData[key] === 'demerit') {
+                    demeritCount++;
+                }
+            });
+            
+            if (demeritCount >= 3) {
+                // 添加警告標記
+                document.querySelectorAll(`[data-student="${studentKey}"]`).forEach(cell => {
+                    cell.classList.add('warning-student');
+                });
+                
+                if (demeritCount === 3) {
+                    // 轉換為顯示格式
+                    const parts = studentKey.split('_');
+                    const displayName = parts.length >= 2 ? `${parts[0]} ${parts.slice(1).join('_')}` : studentKey;
+                    alert(`⚠️ 警告：${displayName} 已累積三次缺失！`);
+                }
+            } else {
+                // 移除警告標記
+                document.querySelectorAll(`[data-student="${studentKey}"]`).forEach(cell => {
+                    cell.classList.remove('warning-student');
+                });
+            }
+        }
+
+        function updateStatistics() {
+            const stats = {};
+            const students = new Set();
+            
+            Object.keys(trackingData).forEach(key => {
+                const [taskIndex, studentName, date] = key.split('-').slice(0, 3);
+                const status = trackingData[key];
+                
+                if (!stats[studentName]) {
+                    stats[studentName] = { merit: 0, demerit: 0 };
+                }
+                
+                if (status === 'merit') {
+                    stats[studentName].merit++;
+                } else if (status === 'demerit') {
+                    stats[studentName].demerit++;
+                }
+                
+                students.add(studentName);
+            });
+            
+            let statsHTML = '<div class="stats-grid">';
+            Array.from(students).forEach(student => {
+                const studentStats = stats[student] || { merit: 0, demerit: 0 };
+                const warningClass = studentStats.demerit >= 3 ? 'warning' : '';
+                
+                statsHTML += `
+                    <div class="student-stats ${warningClass}">
+                        <h4>${student}</h4>
+                        <div class="stat-item">🏅 ${studentStats.merit}</div>
+                        <div class="stat-item">😈 ${studentStats.demerit}</div>
+                        ${studentStats.demerit >= 3 ? '<div class="warning-text">⚠️ 需要關注</div>' : ''}
+                    </div>
+                `;
+            });
+            statsHTML += '</div>';
+            
+            document.getElementById('statsContent').innerHTML = statsHTML;
+            document.getElementById('statisticsPanel').style.display = 'block';
+        }
+
+        async function saveTrackingData() {
+            const targetUserId = selectedUser || currentUser?.uid;
+            if (!targetUserId) return;
+            
+            try {
+                await window.firebaseService.saveTrackingData(targetUserId, trackingData);
+            } catch (error) {
+                console.error('儲存追蹤資料錯誤:', error);
+            }
+        }
+
+        // 初始化將在 loadUserInfo 中執行
+    </script>
+</body>
+</html>

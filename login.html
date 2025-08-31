@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打掃追蹤系統 - 登入</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>🧹 打掃追蹤系統</h1>
+            <form id="loginForm">
+                <div class="input-group">
+                    <label for="email">電子信箱</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">密碼</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="login-btn">登入</button>
+            </form>
+            <div class="auth-options">
+                <button type="button" id="registerBtn" class="register-btn">註冊新帳號</button>
+                <div class="divider">或</div>
+            </div>
+            
+            <div class="user-info">
+                <h3>🔥 Firebase 雲端帳號</h3>
+                <p>📧 請使用電子信箱和密碼登入</p>
+                <p>🆕 首次使用請點擊「註冊新帳號」</p>
+                <div id="demo-accounts" style="display: none;">
+                    <h4>示範帳號（如已建立）：</h4>
+                    <p><strong>管理員：</strong>admin@demo.com / admin123</p>
+                    <p><strong>使用者：</strong>user1@demo.com / user123</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let isRegistering = false;
+        
+        // 切換註冊/登入模式
+        document.getElementById('registerBtn').addEventListener('click', function() {
+            isRegistering = !isRegistering;
+            const btn = document.getElementById('registerBtn');
+            const submitBtn = document.querySelector('.login-btn');
+            
+            if (isRegistering) {
+                btn.textContent = '返回登入';
+                btn.classList.add('active');
+                submitBtn.textContent = '註冊帳號';
+                document.querySelector('h1').innerHTML = '🧹 註冊新帳號';
+            } else {
+                btn.textContent = '註冊新帳號';
+                btn.classList.remove('active');
+                submitBtn.textContent = '登入';
+                document.querySelector('h1').innerHTML = '🧹 打掃追蹤系統';
+            }
+        });
+        
+        // 表單提交處理
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            // 顯示載入狀態
+            const submitBtn = document.querySelector('.login-btn');
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = '處理中...';
+            submitBtn.disabled = true;
+            
+            try {
+                let result;
+                
+                if (isRegistering) {
+                    // 註冊新使用者
+                    const role = email.includes('admin') ? 'admin' : 'user';
+                    const name = email.includes('admin') ? '管理員' : '使用者';
+                    
+                    result = await window.firebaseService.createUser(email, password, {
+                        role: role,
+                        name: name
+                    });
+                } else {
+                    // 登入現有使用者
+                    result = await window.firebaseService.signIn(email, password);
+                }
+                
+                if (result.success) {
+                    try {
+                        console.log('使用者登入成功:', result.user.email);
+                        
+                        // 嘗試取得使用者資料，如果不存在則建立
+                        let userData = null;
+                        try {
+                            const userDoc = await firebase.firestore().collection('users').doc(result.user.uid).get();
+                            userData = userDoc.data();
+                            
+                            // 如果使用者資料不存在，建立預設資料
+                            if (!userData) {
+                                console.log('建立新使用者資料...');
+                                const role = result.user.email.includes('admin') ? 'admin' : 'user';
+                                const name = result.user.email.includes('admin') ? '管理員' : '使用者';
+                                
+                                userData = {
+                                    email: result.user.email,
+                                    role: role,
+                                    name: name,
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                };
+                                
+                                await firebase.firestore().collection('users').doc(result.user.uid).set(userData);
+                                console.log('使用者資料建立完成');
+                            }
+                        } catch (firestoreError) {
+                            console.warn('Firestore 存取錯誤，使用預設資料:', firestoreError);
+                            // 如果 Firestore 有問題，使用預設資料
+                            userData = {
+                                email: result.user.email,
+                                role: result.user.email.includes('admin') ? 'admin' : 'user',
+                                name: result.user.email.includes('admin') ? '管理員' : '使用者'
+                            };
+                        }
+                        
+                        // 儲存使用者資訊到 sessionStorage
+                        sessionStorage.setItem('currentUser', result.user.uid);
+                        sessionStorage.setItem('userEmail', result.user.email);
+                        sessionStorage.setItem('userRole', userData.role || 'user');
+                        sessionStorage.setItem('userName', userData.name || result.user.email);
+                        
+                        console.log('使用者資訊已儲存，檢查是否有現有資料...');
+                        
+                        // 檢查是否已有匯入資料，決定跳轉目標
+                        setTimeout(async () => {
+                            try {
+                                const userDataResult = await firebase.firestore().collection('userData').doc(result.user.uid).get();
+                                
+                                if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
+                                    console.log('偵測到完整資料（包含分配），跳轉到追蹤頁面');
+                                    window.location.href = 'tracking.html';
+                                } else {
+                                    console.log('未偵測到完整資料，跳轉到匯入頁面');
+                                    window.location.href = 'import.html';
+                                }
+                            } catch (error) {
+                                console.warn('無法檢查現有資料，預設跳轉到匯入頁面:', error);
+                                window.location.href = 'import.html';
+                            }
+                        }, 300);
+                        
+                    } catch (loginError) {
+                        console.error('登入後處理錯誤:', loginError);
+                        alert('登入成功，但資料處理發生錯誤。請重新整理頁面。錯誤：' + loginError.message);
+                    }
+                } else {
+                    alert('錯誤：' + result.error);
+                }
+            } catch (error) {
+                console.error('Firebase 錯誤:', error);
+                alert('系統錯誤，請稍後再試');
+            } finally {
+                // 恢復按鈕狀態
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+        
+        // 檢查是否已經登入
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                // 使用者已登入，檢查是否有完整資料決定跳轉位置
+                try {
+                    const userDataResult = await firebase.firestore().collection('userData').doc(user.uid).get();
+                    
+                    if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
+                        console.log('用戶已登入且有完整資料，跳轉到追蹤頁面');
+                        window.location.href = 'tracking.html';
+                    } else {
+                        console.log('用戶已登入但沒有完整資料，跳轉到匯入頁面');
+                        window.location.href = 'import.html';
+                    }
+                } catch (error) {
+                    console.warn('檢查現有資料時發生錯誤，預設跳轉到匯入頁面:', error);
+                    window.location.href = 'import.html';
+                }
+            }
+        });
+        
+        // 開發模式：顯示示範帳號（如果存在）
+        setTimeout(() => {
+            document.getElementById('demo-accounts').style.display = 'block';
+        }, 2000);
+    </script>
+</body>
+</html>

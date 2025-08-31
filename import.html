@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打掃追蹤系統 - 資料匯入</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-content">
+            <h1>🧹 打掃追蹤系統</h1>
+            <div class="nav-user">
+                <span id="userInfo"></span>
+                <button onclick="logout()" class="logout-btn">登出</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="step-container">
+            <h2>步驟一：匯入打掃名單</h2>
+            <div class="upload-section">
+                <input type="file" id="cleaningListFile" accept=".xlsx,.xls" class="file-input">
+                <label for="cleaningListFile" class="file-label">
+                    📋 選擇打掃名單.xlsx
+                </label>
+                <div id="cleaningPreview" class="preview-section"></div>
+            </div>
+        </div>
+
+        <div class="step-container">
+            <h2>步驟二：匯入學生名單</h2>
+            <div class="upload-section">
+                <input type="file" id="studentListFile" accept=".xlsx,.xls" class="file-input">
+                <label for="studentListFile" class="file-label">
+                    👥 選擇學生名單.xlsx
+                </label>
+                <div id="studentPreview" class="preview-section"></div>
+            </div>
+        </div>
+
+        <div class="step-container" id="assignmentSection" style="display: none;">
+            <h2>步驟三：分配打掃任務</h2>
+            <div id="assignmentArea"></div>
+            <div class="action-buttons">
+                <button id="saveAssignments" class="primary-btn">💾 儲存分配</button>
+                <button id="goToTracking" class="secondary-btn">📊 開始追蹤</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        
+        // 檢查登入狀態
+        window.firebaseService.onAuthStateChanged((user) => {
+            if (user) {
+                currentUser = user;
+                loadUserInfo();
+            } else {
+                window.location.href = 'login.html';
+            }
+        });
+        
+        // 載入使用者資訊
+        async function loadUserInfo() {
+            if (!currentUser) return;
+            
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
+                const userData = userDoc.data();
+                
+                document.getElementById('userInfo').textContent = 
+                    `${userData?.name || currentUser.email} (${userData?.role === 'admin' ? '管理員' : '使用者'})`;
+                    
+                // 載入現有資料
+                loadExistingData();
+            } catch (error) {
+                console.error('載入使用者資訊錯誤:', error);
+                // 如果載入 Firebase 資料失敗，使用 sessionStorage 備援
+                document.getElementById('userInfo').textContent = 
+                    `${sessionStorage.getItem('userName')} (${sessionStorage.getItem('userRole') === 'admin' ? '管理員' : '使用者'})`;
+                loadExistingData();
+            }
+        }
+
+        let cleaningData = [];
+        let studentData = [];
+        let assignments = {};
+        let assignedStudents = new Set(); // 追蹤已分配的學生
+        let isDataLoaded = false; // 標記資料是否已載入
+
+        // 登出功能
+        async function logout() {
+            try {
+                await window.firebaseService.signOut();
+                sessionStorage.clear();
+                window.location.href = 'login.html';
+            } catch (error) {
+                console.error('登出錯誤:', error);
+                alert('登出失敗，請稍後再試');
+            }
+        }
+
+        // 載入現有資料
+        async function loadExistingData() {
+            if (!currentUser) {
+                console.log('使用者未登入，無法載入資料');
+                return false;
+            }
+            
+            console.log('開始載入現有資料，使用者 UID:', currentUser.uid);
+            
+            try {
+                const result = await window.firebaseService.getUserData(currentUser.uid);
+                console.log('getUserData 結果:', result);
+                
+                if (result.success && result.data) {
+                    console.log('找到現有資料:', result.data);
+                    
+                    cleaningData = result.data.cleaningTasks || [];
+                    studentData = result.data.students || [];
+                    assignments = result.data.assignments || {};
+                    isDataLoaded = true;
+                    
+                    console.log('載入的資料:', {
+                        cleaningTasks: cleaningData.length,
+                        students: studentData.length,
+                        assignments: Object.keys(assignments).length
+                    });
+                    
+                    // 標記已分配的學生
+                    assignedStudents.clear();
+                    Object.values(assignments).forEach(studentList => {
+                        studentList.forEach(student => assignedStudents.add(student));
+                    });
+                    
+                    displayExistingData();
+                    return true;
+                } else {
+                    console.log('沒有找到現有資料或資料無效');
+                }
+            } catch (error) {
+                console.error('載入資料錯誤:', error);
+            }
+            return false;
+        }
+
+        // 顯示現有資料
+        function displayExistingData() {
+            console.log('開始顯示現有資料');
+            console.log('cleaningData.length:', cleaningData.length);
+            console.log('studentData.length:', studentData.length);
+            
+            if (cleaningData.length > 0) {
+                document.getElementById('cleaningPreview').innerHTML = `
+                    <div class="existing-data-notice">
+                        <h3>✅ 已有打掃名單資料</h3>
+                        <p>共 ${cleaningData.length} 個打掃事項</p>
+                        <button class="secondary-btn" onclick="showCleaningData()">檢視資料</button>
+                        <button class="secondary-btn" onclick="reimportCleaning()">重新匯入</button>
+                    </div>
+                `;
+                console.log('✅ 打掃名單資料顯示完成');
+            } else {
+                console.log('❌ 沒有打掃名單資料');
+            }
+            
+            if (studentData.length > 0) {
+                document.getElementById('studentPreview').innerHTML = `
+                    <div class="existing-data-notice">
+                        <h3>✅ 已有學生名單資料</h3>
+                        <p>共 ${studentData.length} 位學生</p>
+                        <button class="secondary-btn" onclick="showStudentData()">檢視資料</button>
+                        <button class="secondary-btn" onclick="reimportStudents()">重新匯入</button>
+                    </div>
+                `;
+                console.log('✅ 學生名單資料顯示完成');
+            } else {
+                console.log('❌ 沒有學生名單資料');
+            }
+            
+            if (cleaningData.length > 0 && studentData.length > 0) {
+                document.getElementById('assignmentSection').style.display = 'block';
+                generateAssignmentInterface();
+                console.log('✅ 分配介面已顯示');
+            } else {
+                console.log('❌ 資料不完整，無法顯示分配介面');
+            }
+        }
+
+        // 顯示打掃資料
+        function showCleaningData() {
+            displayCleaningPreview();
+        }
+
+        // 顯示學生資料
+        function showStudentData() {
+            displayStudentPreview();
+        }
+
+        // 重新匯入打掃名單
+        function reimportCleaning() {
+            document.getElementById('cleaningListFile').click();
+        }
+
+        // 重新匯入學生名單
+        function reimportStudents() {
+            document.getElementById('studentListFile').click();
+        }
+
+        // 處理打掃名單上傳
+        document.getElementById('cleaningListFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    
+                    console.log('Excel 分頁列表:', workbook.SheetNames);
+                    
+                    // 讀取所有分頁的資料
+                    cleaningData = [];
+                    workbook.SheetNames.forEach((sheetName, index) => {
+                        console.log(`處理分頁 ${index + 1}: ${sheetName}`);
+                        const worksheet = workbook.Sheets[sheetName];
+                        const sheetData = XLSX.utils.sheet_to_json(worksheet);
+                        
+                        // 標準化欄位名稱
+                        const normalizedData = sheetData.map(row => {
+                            const normalizedRow = {};
+                            Object.keys(row).forEach(key => {
+                                const trimmedKey = key.trim();
+                                if (trimmedKey === '事項') {
+                                    normalizedRow['事項'] = row[key];
+                                } else if (trimmedKey === '詳細' || trimmedKey === '詳細位置') {
+                                    normalizedRow['詳細'] = row[key];
+                                } else if (trimmedKey === '標準') {
+                                    normalizedRow['標準'] = row[key];
+                                } else if (trimmedKey === '人數') {
+                                    normalizedRow['人數'] = row[key];
+                                } else {
+                                    normalizedRow[trimmedKey] = row[key];
+                                }
+                            });
+                            
+                            // 加入分頁資訊
+                            normalizedRow['分頁'] = sheetName;
+                            normalizedRow['完整事項'] = `[${sheetName}] ${normalizedRow['事項']}`;
+                            
+                            return normalizedRow;
+                        });
+                        
+                        cleaningData = cleaningData.concat(normalizedData);
+                        console.log(`分頁 ${sheetName} 載入 ${normalizedData.length} 筆資料`);
+                    });
+                    
+                    console.log('總共載入', cleaningData.length, '筆打掃事項');
+                    displayCleaningPreview();
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // 處理學生名單上傳
+        document.getElementById('studentListFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    studentData = XLSX.utils.sheet_to_json(worksheet);
+                    displayStudentPreview();
+                    checkIfCanAssign();
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        function displayCleaningPreview() {
+            const preview = document.getElementById('cleaningPreview');
+            if (cleaningData.length === 0) return;
+
+            let html = `<div class="preview-header">
+                <h3>打掃事項預覽</h3>
+                <div class="preview-actions">
+                    <button class="secondary-btn" onclick="addNewCleaningTask()">➕ 新增任務</button>
+                    <button class="secondary-btn" onclick="editAllCleaningTasks()">✏️ 批量編輯</button>
+                </div>
+            </div>`;
+            
+            // 按分頁分組顯示
+            const groupedData = {};
+            cleaningData.forEach((item, index) => {
+                const sheetName = item['分頁'] || '未知分頁';
+                if (!groupedData[sheetName]) {
+                    groupedData[sheetName] = [];
+                }
+                groupedData[sheetName].push({...item, originalIndex: index});
+            });
+            
+            Object.keys(groupedData).forEach(sheetName => {
+                html += `<div class="sheet-section">
+                    <h4>📋 ${sheetName} (${groupedData[sheetName].length}筆)</h4>
+                    <table class="preview-table editable"><thead><tr>
+                        <th>事項</th><th>詳細</th><th>標準</th><th>人數</th><th>操作</th>
+                    </tr></thead><tbody>`;
+                
+                groupedData[sheetName].forEach(row => {
+                    html += `<tr data-index="${row.originalIndex}">`;
+                    html += `<td><input type="text" value="${row['事項'] || ''}" onchange="updateCleaningTask(${row.originalIndex}, '事項', this.value)"></td>`;
+                    html += `<td><input type="text" value="${row['詳細'] || ''}" onchange="updateCleaningTask(${row.originalIndex}, '詳細', this.value)"></td>`;
+                    html += `<td><input type="text" value="${row['標準'] || ''}" onchange="updateCleaningTask(${row.originalIndex}, '標準', this.value)"></td>`;
+                    html += `<td><input type="number" value="${row['人數'] || 1}" min="1" onchange="updateCleaningTask(${row.originalIndex}, '人數', this.value)"></td>`;
+                    html += `<td class="action-buttons">
+                        <button class="edit-btn" onclick="duplicateCleaningTask(${row.originalIndex})">📋</button>
+                        <button class="delete-btn" onclick="deleteCleaningTask(${row.originalIndex})">🗑️</button>
+                    </td>`;
+                    html += '</tr>';
+                });
+                
+                html += '</tbody></table></div>';
+            });
+            
+            html += `<div class="import-summary">
+                <h4>📊 匯入摘要</h4>
+                <p>✅ 成功匯入 <strong>${Object.keys(groupedData).length}</strong> 個分頁</p>
+                <p>✅ 總共 <strong>${cleaningData.length}</strong> 個打掃事項</p>
+                <p>📋 分頁: ${Object.keys(groupedData).join(', ')}</p>
+                <div class="summary-actions">
+                    <button class="primary-btn" onclick="saveCleaningChanges()">💾 儲存變更</button>
+                    <button class="secondary-btn" onclick="reimportCleaning()">🔄 重新匯入</button>
+                </div>
+            </div>`;
+            
+            preview.innerHTML = html;
+        }
+
+        function displayStudentPreview() {
+            const preview = document.getElementById('studentPreview');
+            if (studentData.length === 0) return;
+
+            let html = `<div class="preview-header">
+                <h3>學生名單預覽</h3>
+                <div class="preview-actions">
+                    <button class="secondary-btn" onclick="addNewStudent()">➕ 新增學生</button>
+                    <button class="secondary-btn" onclick="editAllStudents()">✏️ 批量編輯</button>
+                </div>
+            </div>`;
+            
+            html += '<table class="preview-table editable"><thead><tr>';
+            html += '<th>學號</th><th>姓名</th><th>顯示格式</th><th>操作</th>';
+            html += '</tr></thead><tbody>';
+
+            studentData.forEach((student, index) => {
+                const studentId = student['學號'] || '';
+                const studentName = student['姓名'] || '';
+                const displayName = `${studentId} ${studentName}`;
+                
+                html += `<tr data-index="${index}">`;
+                html += `<td><input type="text" value="${studentId}" onchange="updateStudent(${index}, '學號', this.value)"></td>`;
+                html += `<td><input type="text" value="${studentName}" onchange="updateStudent(${index}, '姓名', this.value)"></td>`;
+                html += `<td><strong>${displayName}</strong></td>`;
+                html += `<td class="action-buttons">
+                    <button class="edit-btn" onclick="duplicateStudent(${index})">📋</button>
+                    <button class="delete-btn" onclick="deleteStudent(${index})">🗑️</button>
+                </td>`;
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            
+            html += `<div class="import-summary">
+                <h4>👥 學生名單摘要</h4>
+                <p>✅ 成功匯入 <strong>${studentData.length}</strong> 位學生</p>
+                <p>📋 顯示格式：學號 + 姓名</p>
+                <div class="summary-actions">
+                    <button class="primary-btn" onclick="saveStudentChanges()">💾 儲存變更</button>
+                    <button class="secondary-btn" onclick="reimportStudents()">🔄 重新匯入</button>
+                </div>
+            </div>`;
+            
+            preview.innerHTML = html;
+        }
+
+        function checkIfCanAssign() {
+            if (cleaningData.length > 0 && studentData.length > 0) {
+                document.getElementById('assignmentSection').style.display = 'block';
+                generateAssignmentInterface();
+            }
+        }
+
+        function generateAssignmentInterface() {
+            const assignmentArea = document.getElementById('assignmentArea');
+            let html = `
+                <div class="assignment-instructions">
+                    <h3>📝 分配說明</h3>
+                    <ul>
+                        <li>💡 <strong>按住 Shift 鍵</strong>可以一次選擇多位學生</li>
+                        <li>💡 <strong>按住 Ctrl/Cmd 鍵</strong>可以個別選擇學生</li>
+                        <li>⚠️ 已分配的學生會顯示為灰色且無法再次選擇</li>
+                        <li>✨ 建議先分配需要人數較多的打掃事項</li>
+                    </ul>
+                </div>
+            `;
+
+            cleaningData.forEach((task, index) => {
+                const taskName = task['完整事項'] || task['事項'] || '未知事項';
+                const details = task['詳細'] || '';
+                const standard = task['標準'] || '';
+                const requiredCount = parseInt(task['人數'] || 1);
+                
+                html += `
+                    <div class="assignment-item">
+                        <h4>${taskName}</h4>
+                        <div class="task-details">
+                            <p><strong>📝 詳細：</strong>${details}</p>
+                            <p><strong>📏 標準：</strong>${standard}</p>
+                            <p><strong>👥 所需人數：</strong>${requiredCount}人</p>
+                        </div>
+                        <div class="student-assignment">
+                            <select multiple class="student-select" data-task="${index}" data-required="${requiredCount}">
+                                ${studentData.map(student => {
+                                    const studentId = student['學號'] || '';
+                                    const studentName = student['姓名'] || '';
+                                    const displayName = `${studentId} ${studentName}`;
+                                    const uniqueKey = `${studentId}_${studentName}`; // 使用唯一標識
+                                    
+                                    const isAssigned = assignedStudents.has(uniqueKey);
+                                    const isCurrentlySelected = assignments[index] && assignments[index].includes(uniqueKey);
+                                    
+                                    if (isAssigned && !isCurrentlySelected) {
+                                        return `<option value="${uniqueKey}" disabled style="color: #999; background: #f5f5f5;">${displayName} (已分配)</option>`;
+                                    } else {
+                                        return `<option value="${uniqueKey}" ${isCurrentlySelected ? 'selected' : ''}>${displayName}</option>`;
+                                    }
+                                }).join('')}
+                            </select>
+                            <div class="selected-students" id="selected-${index}"></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            assignmentArea.innerHTML = html;
+
+            // 添加選擇事件監聽器
+            document.querySelectorAll('.student-select').forEach(select => {
+                select.addEventListener('change', updateSelectedStudents);
+            });
+        }
+
+        function updateSelectedStudents(e) {
+            const select = e.target;
+            const taskIndex = select.dataset.task;
+            const selectedDiv = document.getElementById(`selected-${taskIndex}`);
+            const selectedOptions = Array.from(select.selectedOptions);
+            const requiredCount = parseInt(select.dataset.required);
+            
+            // 移除之前的分配
+            if (assignments[taskIndex]) {
+                assignments[taskIndex].forEach(student => assignedStudents.delete(student));
+            }
+            
+            // 添加新的分配
+            assignments[taskIndex] = selectedOptions.map(option => option.value);
+            assignments[taskIndex].forEach(student => assignedStudents.add(student));
+            
+            // 更新顯示
+            const selectedCount = selectedOptions.length;
+            const statusClass = selectedCount === requiredCount ? 'perfect' : 
+                               selectedCount > requiredCount ? 'over' : 
+                               selectedCount > 0 ? 'partial' : 'empty';
+            
+            selectedDiv.innerHTML = `
+                <div class="selection-status ${statusClass}">
+                    <strong>已選擇 ${selectedCount}/${requiredCount} 人</strong>
+                    ${selectedCount > requiredCount ? ' ⚠️ 超過需求人數' : 
+                      selectedCount === requiredCount ? ' ✅ 人數正確' : 
+                      selectedCount > 0 ? ' 🔄 尚需更多人員' : ''}
+                </div>
+                <div class="selected-list">
+                    ${selectedOptions.map(option => {
+                        // 將 uniqueKey 轉換回顯示格式
+                        const parts = option.value.split('_');
+                        const displayName = parts.length >= 2 ? `${parts[0]} ${parts.slice(1).join('_')}` : option.value;
+                        return `<span class="student-tag">${displayName}</span>`;
+                    }).join('')}
+                </div>
+            `;
+            
+            // 重新生成所有選單以更新已分配狀態
+            updateAllSelects();
+        }
+
+        function updateAllSelects() {
+            document.querySelectorAll('.student-select').forEach(select => {
+                const taskIndex = select.dataset.task;
+                Array.from(select.options).forEach(option => {
+                    const studentName = option.value;
+                    const isAssigned = assignedStudents.has(studentName);
+                    const isCurrentlySelected = assignments[taskIndex] && assignments[taskIndex].includes(studentName);
+                    
+                    if (isAssigned && !isCurrentlySelected) {
+                        option.disabled = true;
+                        option.style.color = '#999';
+                        option.style.background = '#f5f5f5';
+                        option.textContent = studentName + ' (已分配)';
+                    } else {
+                        option.disabled = false;
+                        option.style.color = '';
+                        option.style.background = '';
+                        option.textContent = studentName;
+                    }
+                });
+            });
+        }
+
+        // 儲存分配
+        document.getElementById('saveAssignments').addEventListener('click', async function() {
+            console.log('開始儲存分配...');
+            console.log('當前使用者:', currentUser);
+            console.log('清潔資料:', cleaningData.length, '筆');
+            console.log('學生資料:', studentData.length, '筆');
+            console.log('分配資料:', Object.keys(assignments).length, '項任務');
+            
+            if (!currentUser) {
+                alert('請先登入');
+                console.error('使用者未登入');
+                return;
+            }
+            
+            if (cleaningData.length === 0) {
+                alert('請先匯入打掃名單');
+                return;
+            }
+            
+            if (studentData.length === 0) {
+                alert('請先匯入學生名單');
+                return;
+            }
+            
+            if (Object.keys(assignments).length === 0) {
+                alert('請先分配學生到打掃任務');
+                return;
+            }
+            
+            const userData = {
+                cleaningTasks: cleaningData,
+                students: studentData,
+                assignments: assignments,
+                lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+                version: 1 // 版本號碼
+            };
+            
+            try {
+                // 顯示載入狀態
+                const saveBtn = document.getElementById('saveAssignments');
+                const originalText = saveBtn.textContent;
+                saveBtn.textContent = '⏳ 儲存中...';
+                saveBtn.disabled = true;
+                
+                console.log('準備儲存到 Firebase...');
+                console.log('使用者 UID:', currentUser.uid);
+                
+                const result = await window.firebaseService.saveUserData(currentUser.uid, userData);
+                
+                console.log('儲存結果:', result);
+                
+                if (result.success) {
+                    alert('✅ 分配資料已成功儲存到 Firebase 雲端！\n\n' + 
+                          `📋 打掃事項: ${cleaningData.length} 項\n` +
+                          `👥 學生人數: ${studentData.length} 人\n` +
+                          `🎯 任務分配: ${Object.keys(assignments).length} 項任務`);
+                    console.log('✅ 儲存成功');
+                } else {
+                    console.error('❌ 儲存失敗:', result.error);
+                    alert('❌ 儲存失敗：' + result.error + '\n\n請檢查網路連線或稍後再試。');
+                }
+                
+                // 恢復按鈕狀態
+                saveBtn.textContent = originalText;
+                saveBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('❌ 儲存過程發生錯誤:', error);
+                alert('❌ 儲存失敗，系統錯誤：' + error.message + '\n\n請檢查：\n1. 網路連線是否正常\n2. Firebase 設定是否正確\n3. 瀏覽器 Console 中的詳細錯誤');
+                
+                // 恢復按鈕狀態
+                const saveBtn = document.getElementById('saveAssignments');
+                saveBtn.textContent = '💾 儲存分配';
+                saveBtn.disabled = false;
+            }
+        });
+
+        // 前往追蹤頁面
+        document.getElementById('goToTracking').addEventListener('click', function() {
+            window.location.href = 'tracking.html';
+        });
+
+        // 打掃任務編輯函數
+        function updateCleaningTask(index, field, value) {
+            if (cleaningData[index]) {
+                cleaningData[index][field] = value;
+                // 重新生成完整事項名稱
+                if (field === '事項') {
+                    cleaningData[index]['完整事項'] = `[${cleaningData[index]['分頁']}] ${value}`;
+                }
+                console.log(`更新任務 ${index} 的 ${field}:`, value);
+            }
+        }
+
+        function deleteCleaningTask(index) {
+            if (confirm('確定要刪除這個打掃事項嗎？')) {
+                cleaningData.splice(index, 1);
+                displayCleaningPreview();
+                // 重新生成分配介面
+                if (studentData.length > 0) {
+                    generateAssignmentInterface();
+                }
+                console.log('刪除任務:', index);
+            }
+        }
+
+        function duplicateCleaningTask(index) {
+            if (cleaningData[index]) {
+                const newTask = {...cleaningData[index]};
+                newTask['事項'] = newTask['事項'] + ' (複製)';
+                newTask['完整事項'] = `[${newTask['分頁']}] ${newTask['事項']}`;
+                cleaningData.push(newTask);
+                displayCleaningPreview();
+                // 重新生成分配介面
+                if (studentData.length > 0) {
+                    generateAssignmentInterface();
+                }
+                console.log('複製任務:', index);
+            }
+        }
+
+        function addNewCleaningTask() {
+            const sheetName = prompt('請輸入分頁名稱（例如：B1-2F）：');
+            const taskName = prompt('請輸入事項名稱：');
+            
+            if (sheetName && taskName) {
+                const newTask = {
+                    '事項': taskName,
+                    '詳細': '',
+                    '標準': '',
+                    '人數': 1,
+                    '分頁': sheetName,
+                    '完整事項': `[${sheetName}] ${taskName}`
+                };
+                
+                cleaningData.push(newTask);
+                displayCleaningPreview();
+                // 重新生成分配介面
+                if (studentData.length > 0) {
+                    generateAssignmentInterface();
+                }
+                console.log('新增任務:', newTask);
+            }
+        }
+
+        function editAllCleaningTasks() {
+            // 批量編輯模式
+            alert('進入批量編輯模式，您可以直接在表格中編輯所有內容');
+        }
+
+        function saveCleaningChanges() {
+            alert('打掃事項變更已保存！請記得重新儲存分配資料。');
+            // 重新生成分配介面以反映變更
+            if (studentData.length > 0) {
+                generateAssignmentInterface();
+            }
+        }
+
+        // 學生編輯函數
+        function updateStudent(index, field, value) {
+            if (studentData[index]) {
+                studentData[index][field] = value;
+                // 更新顯示格式
+                const row = document.querySelector(`tr[data-index="${index}"]`);
+                if (row) {
+                    const displayCell = row.querySelector('td:nth-child(3) strong');
+                    if (displayCell) {
+                        displayCell.textContent = `${studentData[index]['學號']} ${studentData[index]['姓名']}`;
+                    }
+                }
+                console.log(`更新學生 ${index} 的 ${field}:`, value);
+            }
+        }
+
+        function deleteStudent(index) {
+            if (confirm('確定要刪除這位學生嗎？')) {
+                studentData.splice(index, 1);
+                displayStudentPreview();
+                // 重新生成分配介面
+                if (cleaningData.length > 0) {
+                    generateAssignmentInterface();
+                }
+                console.log('刪除學生:', index);
+            }
+        }
+
+        function duplicateStudent(index) {
+            if (studentData[index]) {
+                const newStudent = {...studentData[index]};
+                newStudent['學號'] = newStudent['學號'] + '_copy';
+                newStudent['姓名'] = newStudent['姓名'] + ' (複製)';
+                studentData.push(newStudent);
+                displayStudentPreview();
+                // 重新生成分配介面
+                if (cleaningData.length > 0) {
+                    generateAssignmentInterface();
+                }
+                console.log('複製學生:', index);
+            }
+        }
+
+        function addNewStudent() {
+            const studentId = prompt('請輸入學號：');
+            const studentName = prompt('請輸入姓名：');
+            
+            if (studentId && studentName) {
+                const newStudent = {
+                    '學號': studentId,
+                    '姓名': studentName
+                };
+                
+                studentData.push(newStudent);
+                displayStudentPreview();
+                // 重新生成分配介面
+                if (cleaningData.length > 0) {
+                    generateAssignmentInterface();
+                }
+                console.log('新增學生:', newStudent);
+            }
+        }
+
+        function editAllStudents() {
+            alert('進入批量編輯模式，您可以直接在表格中編輯所有學生資料');
+        }
+
+        function saveStudentChanges() {
+            alert('學生名單變更已保存！請記得重新儲存分配資料。');
+            // 重新生成分配介面以反映變更
+            if (cleaningData.length > 0) {
+                generateAssignmentInterface();
+            }
+        }
+
+        // 頁面載入時檢查現有資料
+        window.addEventListener('load', function() {
+            loadExistingData();
+        });
+    </script>
+</body>
+</html>
