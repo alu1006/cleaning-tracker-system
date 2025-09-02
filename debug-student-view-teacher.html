@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>測試學生查看教師資料</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .info { background: #f0f8ff; }
+        .success { background: #f0fff0; }
+        .error { background: #fff0f0; }
+        button { padding: 8px 15px; margin: 5px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <h1>🧪 學生查看教師資料測試</h1>
+    
+    <div class="section info">
+        <h3>📋 測試步驟</h3>
+        <ol>
+            <li>使用學生帳號登入 (例如: 123@gmail.com)</li>
+            <li>檢查 sessionStorage 是否正確設置</li>
+            <li>測試 getTeacherDataForStudent 方法</li>
+            <li>驗證學生能否看到教師的打掃表資料</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h3>🔐 登入測試</h3>
+        <input type="email" id="email" placeholder="學生信箱" value="123@gmail.com">
+        <input type="password" id="password" placeholder="密碼" value="123456">
+        <button onclick="testLogin()">登入測試</button>
+        <button onclick="logout()">登出</button>
+    </div>
+
+    <div class="section">
+        <h3>📊 當前狀態</h3>
+        <div id="currentStatus"></div>
+    </div>
+
+    <div class="section">
+        <h3>🔍 SessionStorage 檢查</h3>
+        <button onclick="checkSessionStorage()">檢查 SessionStorage</button>
+        <div id="sessionData"></div>
+    </div>
+
+    <div class="section">
+        <h3>👨‍🏫 教師資料查詢</h3>
+        <button onclick="getTeacherData()">獲取教師資料</button>
+        <div id="teacherData"></div>
+    </div>
+
+    <div class="section">
+        <h3>📋 Firestore 直接查詢</h3>
+        <button onclick="checkFirestoreDirectly()">直接查詢 Firestore</button>
+        <div id="firestoreData"></div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple-public.js"></script>
+    
+    <script>
+        let currentUser = null;
+
+        // 更新狀態顯示
+        function updateStatus() {
+            const statusDiv = document.getElementById('currentStatus');
+            statusDiv.innerHTML = `
+                <p><strong>當前使用者:</strong> ${currentUser ? currentUser.email : '未登入'}</p>
+                <p><strong>UID:</strong> ${currentUser ? currentUser.uid : 'N/A'}</p>
+                <p><strong>時間:</strong> ${new Date().toLocaleString()}</p>
+            `;
+        }
+
+        // 監聽認證狀態
+        window.firebaseService.onAuthStateChanged((user) => {
+            currentUser = user;
+            updateStatus();
+        });
+
+        // 登入測試
+        async function testLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                console.log('🔐 嘗試登入:', email);
+                const result = await window.firebaseService.signIn(email, password);
+                
+                if (result.success) {
+                    console.log('✅ 登入成功');
+                    alert('登入成功！');
+                    
+                    // 檢查使用者角色
+                    const userDoc = await window.firebaseService.db.collection('users').doc(result.user.uid).get();
+                    const userData = userDoc.data();
+                    
+                    console.log('使用者資料:', userData);
+                    
+                    if (userData?.role === 'student') {
+                        console.log('🎓 檢測到學生角色，設置 sessionStorage');
+                        
+                        // 模擬設置學生模式
+                        sessionStorage.setItem('currentUser', result.user.uid);
+                        sessionStorage.setItem('userEmail', result.user.email);
+                        sessionStorage.setItem('userRole', 'student');
+                        sessionStorage.setItem('userName', userData.name || result.user.email);
+                        
+                        // 獲取教師資料
+                        const teacherResult = await window.firebaseService.getTeacherDataForStudent(result.user.uid);
+                        if (teacherResult.success) {
+                            sessionStorage.setItem('teacherId', teacherResult.teacherId);
+                            sessionStorage.setItem('teacherName', teacherResult.teacherInfo?.name || '教師');
+                            sessionStorage.setItem('isStudentMode', 'true');
+                            console.log('✅ 學生模式 sessionStorage 設置完成');
+                        }
+                    }
+                } else {
+                    console.error('❌ 登入失敗:', result.error);
+                    alert('登入失敗: ' + result.error);
+                }
+            } catch (error) {
+                console.error('登入錯誤:', error);
+                alert('登入錯誤: ' + error.message);
+            }
+        }
+
+        // 登出
+        async function logout() {
+            await window.firebaseService.signOut();
+            sessionStorage.clear();
+            alert('已登出');
+        }
+
+        // 檢查 SessionStorage
+        function checkSessionStorage() {
+            const sessionDiv = document.getElementById('sessionData');
+            const sessionKeys = ['currentUser', 'userEmail', 'userRole', 'userName', 'teacherId', 'teacherName', 'isStudentMode'];
+            
+            let html = '<h4>SessionStorage 內容:</h4>';
+            sessionKeys.forEach(key => {
+                const value = sessionStorage.getItem(key);
+                html += `<p><strong>${key}:</strong> ${value || '(未設置)'}</p>`;
+            });
+            
+            sessionDiv.innerHTML = html;
+        }
+
+        // 獲取教師資料
+        async function getTeacherData() {
+            if (!currentUser) {
+                alert('請先登入');
+                return;
+            }
+
+            const teacherDiv = document.getElementById('teacherData');
+            teacherDiv.innerHTML = '<p>載入中...</p>';
+
+            try {
+                console.log('🔍 獲取教師資料，學生ID:', currentUser.uid);
+                const result = await window.firebaseService.getTeacherDataForStudent(currentUser.uid);
+                
+                if (result.success) {
+                    teacherDiv.innerHTML = `
+                        <div class="success">
+                            <h4>✅ 成功獲取教師資料</h4>
+                            <p><strong>教師ID:</strong> ${result.teacherId}</p>
+                            <p><strong>教師姓名:</strong> ${result.teacherInfo?.name || 'N/A'}</p>
+                            <p><strong>教師信箱:</strong> ${result.teacherInfo?.email || 'N/A'}</p>
+                            <p><strong>學生資料:</strong></p>
+                            <pre>${JSON.stringify(result.studentInfo, null, 2)}</pre>
+                            <p><strong>教師打掃資料:</strong></p>
+                            <pre>${JSON.stringify(result.teacherData, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    teacherDiv.innerHTML = `
+                        <div class="error">
+                            <h4>❌ 獲取教師資料失敗</h4>
+                            <p><strong>錯誤:</strong> ${result.error}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('獲取教師資料錯誤:', error);
+                teacherDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ 發生錯誤</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 直接查詢 Firestore
+        async function checkFirestoreDirectly() {
+            if (!currentUser) {
+                alert('請先登入');
+                return;
+            }
+
+            const firestoreDiv = document.getElementById('firestoreData');
+            firestoreDiv.innerHTML = '<p>查詢中...</p>';
+
+            try {
+                // 1. 檢查學生記錄
+                const studentDoc = await window.firebaseService.db.collection('students').doc(currentUser.uid).get();
+                
+                let html = '<h4>Firestore 直接查詢結果:</h4>';
+                
+                if (studentDoc.exists) {
+                    const studentData = studentDoc.data();
+                    html += `<div class="success">
+                        <h5>✅ 學生記錄存在</h5>
+                        <pre>${JSON.stringify(studentData, null, 2)}</pre>
+                    </div>`;
+                    
+                    // 2. 檢查教師資料
+                    if (studentData.teacherId) {
+                        const teacherDoc = await window.firebaseService.db.collection('users').doc(studentData.teacherId).get();
+                        const teacherUserData = await window.firebaseService.db.collection('userData').doc(studentData.teacherId).get();
+                        
+                        html += `<div class="info">
+                            <h5>📋 教師基本資料</h5>
+                            <pre>${JSON.stringify(teacherDoc.exists ? teacherDoc.data() : '不存在', null, 2)}</pre>
+                            
+                            <h5>📊 教師打掃資料</h5>
+                            <pre>${JSON.stringify(teacherUserData.exists ? teacherUserData.data() : '不存在', null, 2)}</pre>
+                        </div>`;
+                    }
+                } else {
+                    html += `<div class="error">
+                        <h5>❌ 學生記錄不存在</h5>
+                        <p>UID: ${currentUser.uid}</p>
+                    </div>`;
+                }
+                
+                firestoreDiv.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Firestore 查詢錯誤:', error);
+                firestoreDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Firestore 查詢錯誤</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 頁面載入時更新狀態
+        updateStatus();
+    </script>
+</body>
+</html>
