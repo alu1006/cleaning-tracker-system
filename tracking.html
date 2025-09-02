@@ -477,15 +477,18 @@
 
         function updateWeekDisplay() {
             const startOfWeek = new Date(currentWeek);
-            startOfWeek.setDate(currentWeek.getDate() - currentWeek.getDay());
+            // 調整為週一開始
+            const dayOfWeek = currentWeek.getDay();
+            const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+            startOfWeek.setDate(currentWeek.getDate() + daysToMonday);
             
             const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setDate(startOfWeek.getDate() + 4); // 週一到週五，共5天
             
             const formatDate = (date) => `${date.getMonth() + 1}/${date.getDate()}`;
             
             document.getElementById('currentWeek').textContent = 
-                `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)}`;
+                `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)} (工作日)`;
         }
 
         async function loadUserData() {
@@ -683,13 +686,22 @@
             
             let tableHTML = '<table class="tracking-table"><thead><tr><th class="task-header">打掃事項 / 負責人</th>';
             
-            // 生成日期標題
-            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-            for (let i = 0; i < 7; i++) {
+            // 生成工作日標題（週一到週五）
+            const weekdays = ['一', '二', '三', '四', '五'];
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+            
+            for (let i = 0; i < 5; i++) {
                 const date = new Date(startOfWeek);
                 date.setDate(startOfWeek.getDate() + i);
                 const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
-                tableHTML += `<th class="date-header">${dateStr}<br>(${weekdays[i]})</th>`;
+                const currentDateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                
+                // 檢查是否為今日
+                const isToday = currentDateStr === todayStr;
+                const todayClass = isToday ? ' today-header' : '';
+                
+                tableHTML += `<th class="date-header${todayClass}">${dateStr}<br>(${weekdays[i]})</th>`;
             }
             tableHTML += '</tr></thead><tbody>';
 
@@ -726,7 +738,8 @@
                         </div>
                     </td>`;
                     
-                    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                    // 只生成工作日（週一到週五）
+                    for (let dayIndex = 0; dayIndex < 5; dayIndex++) {
                         const date = new Date(startOfWeek);
                         date.setDate(startOfWeek.getDate() + dayIndex);
                         const dateKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
@@ -736,7 +749,13 @@
                         // 管理員可以編輯所有資料，一般使用者只能編輯自己的資料
                         const cellClass = userRole === 'admin' || selectedUser === currentUser?.uid ? 'clickable' : '';
                         
-                        tableHTML += `<td class="tracking-cell ${cellClass}" data-key="${cellKey}" data-student="${studentKey}">`;
+                        // 檢查是否為今日
+                        const today = new Date();
+                        const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                        const isToday = dateKey === todayStr;
+                        const todayClass = isToday ? ' today-cell' : '';
+                        
+                        tableHTML += `<td class="tracking-cell ${cellClass}${todayClass}" data-key="${cellKey}" data-student="${studentKey}">`;
                         
                         if (currentStatus === 'merit') {
                             tableHTML += '🏅';

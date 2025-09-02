@@ -1023,6 +1023,47 @@ body {
     font-size: 10px;
 }
 
+/* 今日標注樣式 */
+.today-header {
+    background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%) !important;
+    position: relative;
+    animation: todayPulse 2s infinite;
+}
+
+.today-cell {
+    background: rgba(255, 107, 53, 0.1) !important;
+    border: 2px solid #ff6b35 !important;
+    position: relative;
+}
+
+.today-cell::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 107, 53, 0.05);
+    border-radius: 4px;
+    z-index: -1;
+}
+
+@keyframes todayPulse {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(255, 107, 53, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(255, 107, 53, 0.6), 0 0 25px rgba(255, 107, 53, 0.3);
+    }
+}
+
+/* 今日單元格在可點擊狀態下的懸停效果 */
+.today-cell.clickable:hover {
+    background: rgba(255, 107, 53, 0.2) !important;
+    transform: scale(1.08);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
 /* 無資料狀態 */
 .no-data {
     text-align: center;
