@@ -42,6 +42,20 @@
     <script src="firebase-simple-public.js"></script>
     
     <script>
+        // 等待頁面和 Firebase 完全載入
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('頁面載入完成');
+            
+            // 檢查 Firebase 服務是否載入
+            setTimeout(() => {
+                if (window.firebaseService) {
+                    console.log('✅ Firebase 服務已載入');
+                    console.log('可用方法:', Object.getOwnPropertyNames(Object.getPrototypeOf(window.firebaseService)));
+                } else {
+                    console.error('❌ Firebase 服務未載入');
+                }
+            }, 100);
+        });
         
         // Google 登入處理
         document.getElementById('googleLoginBtn').addEventListener('click', async function() {
@@ -51,6 +65,17 @@
             btn.disabled = true;
             
             try {
+                // 檢查 firebaseService 是否存在
+                if (!window.firebaseService) {
+                    throw new Error('Firebase 服務尚未載入，請重新整理頁面');
+                }
+                
+                // 檢查 signInWithGoogle 方法是否存在
+                if (typeof window.firebaseService.signInWithGoogle !== 'function') {
+                    console.error('firebaseService 方法:', Object.keys(window.firebaseService));
+                    throw new Error('signInWithGoogle 方法不存在，請檢查 Firebase 設定');
+                }
+                
                 const result = await window.firebaseService.signInWithGoogle();
                 
                 if (result.success) {
