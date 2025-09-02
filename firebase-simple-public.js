@@ -97,6 +97,56 @@ class FirebaseService {
         }
     }
     
+    // Google 登入
+    async signInWithGoogle() {
+        try {
+            if (!this.auth) {
+                throw new Error('Firebase Authentication 尚未初始化。請檢查 Firebase 設定。');
+            }
+            
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.addScope('email');
+            provider.addScope('profile');
+            
+            const userCredential = await this.auth.signInWithPopup(provider);
+            const user = userCredential.user;
+            
+            // 檢查是否為新使用者，如果是則建立使用者資料
+            if (userCredential.additionalUserInfo.isNewUser) {
+                console.log('新 Google 使用者，建立使用者資料...');
+                
+                const userData = {
+                    email: user.email,
+                    role: 'teacher',
+                    name: user.displayName || user.email,
+                    photoURL: user.photoURL || '',
+                    provider: 'google',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                await this.db.collection('users').doc(user.uid).set(userData);
+                console.log('✅ 使用者資料已建立');
+            }
+            
+            return { success: true, user: user, isNewUser: userCredential.additionalUserInfo.isNewUser };
+        } catch (error) {
+            let errorMessage = error.message;
+            
+            // 中文錯誤訊息
+            if (error.code === 'auth/configuration-not-found') {
+                errorMessage = 'Firebase Authentication 尚未啟用。請到 Firebase Console 啟用 Google 驗證。';
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                errorMessage = '登入視窗已關閉';
+            } else if (error.code === 'auth/popup-blocked') {
+                errorMessage = '登入視窗被瀏覽器阻擋，請允許彈出式視窗';
+            } else if (error.code === 'auth/operation-not-allowed') {
+                errorMessage = 'Google 登入尚未啟用，請聯絡管理員';
+            }
+            
+            return { success: false, error: errorMessage };
+        }
+    }
+
     async signOut() {
         try {
             await this.auth.signOut();
