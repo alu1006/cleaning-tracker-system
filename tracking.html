@@ -562,7 +562,7 @@
                     return false;
                 }
                 
-                const { teacherId, teacherInfo, userData: teacherUserData, trackingData: teacherTrackingData, studentInfo } = teacherDataResult;
+                const { teacherId, teacherInfo, teacherData: teacherUserData, teacherTrackingData, studentInfo } = teacherDataResult;
                 
                 // 載入學生自己的追蹤記錄
                 const studentTrackingResult = await window.firebaseService.getTrackingData(studentId);

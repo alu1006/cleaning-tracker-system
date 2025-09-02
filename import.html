@@ -184,11 +184,11 @@
                     result = await window.firebaseService.getTeacherDataForStudent(currentUser.uid);
                     
                     if (result.success) {
-                        console.log('找到教師資料:', result.userData);
+                        console.log('找到教師資料:', result.teacherData);
                         
-                        cleaningData = result.userData?.cleaningTasks || [];
-                        studentData = result.userData?.students || [];
-                        assignments = result.userData?.assignments || {};
+                        cleaningData = result.teacherData?.cleaningTasks || [];
+                        studentData = result.teacherData?.students || [];
+                        assignments = result.teacherData?.assignments || {};
                         isDataLoaded = true;
                         
                         // 添加教師和學生資訊到全域變數
