@@ -61,22 +61,140 @@ class FirebaseService {
         }
     }
     
+    async createUserWithoutLogin(email, password, userData, currentUser) {
+        console.log('開始創建學生帳號，當前教師:', currentUser.email, currentUser.uid);
+        
+        const teacherId = currentUser.uid;
+        
+        try {
+            console.log('📝 第1步：創建學生 Firebase Auth 帳號...');
+            const userCredential = await this.auth.createUserWithEmailAndPassword(email, password);
+            const newUserUid = userCredential.user.uid;
+            console.log('✅ 學生 Auth 帳號創建成功，UID:', newUserUid);
+            console.log('⚠️ Firebase 已自動登入學生帳號');
+            
+            console.log('📝 第2步：立即創建學生的所有資料記錄...');
+            
+            // 創建 users 記錄
+            const userDoc = {
+                email: email,
+                role: 'student',
+                name: userData.name || email,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            if (userData.studentNumber) {
+                userDoc.studentNumber = userData.studentNumber;
+            }
+            
+            await this.db.collection('users').doc(newUserUid).set(userDoc);
+            console.log('✅ 學生 users 記錄創建成功');
+            
+            // 創建 students 記錄
+            await this.db.collection('students').doc(newUserUid).set({
+                teacherId: teacherId,
+                studentNumber: userData.studentNumber || '',
+                name: userData.name || email,
+                email: email,
+                status: 'active',
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log('✅ 學生 students 記錄創建成功');
+            
+            console.log('📝 第3步：登出學生帳號');
+            await this.auth.signOut();
+            console.log('✅ 已登出學生帳號');
+            
+            // 返回需要前端處理教師重新登入的訊息
+            return { 
+                success: true, 
+                user: { uid: newUserUid, email: email },
+                dataCreated: true,
+                needsImmediateReload: true,
+                message: '學生帳號創建成功！即將重新載入頁面...'
+            };
+            
+        } catch (error) {
+            console.error('創建學生帳號錯誤:', error);
+            
+            let errorMessage = error.message;
+            if (error.code === 'auth/email-already-in-use') {
+                errorMessage = '此電子信箱已被註冊';
+            } else if (error.code === 'auth/weak-password') {
+                errorMessage = '密碼強度不足，請至少輸入6個字元';
+            } else if (error.code === 'auth/invalid-email') {
+                errorMessage = '電子信箱格式不正確';
+            } else if (error.code === 'permission-denied') {
+                errorMessage = '權限不足，請確認您是否有建立學生帳號的權限';
+            }
+            
+            return { success: false, error: errorMessage };
+        }
+    }
+
     async createUser(email, password, userData) {
         try {
             if (!this.auth) {
                 throw new Error('Firebase Authentication 尚未初始化。請檢查 Firebase 設定。');
             }
             
+            // 保存當前登入的使用者
+            const currentUser = this.auth.currentUser;
+            
+            // 如果當前有使用者登入且要創建的是學生，使用特殊方法
+            console.log('🔍 創建使用者檢查:', {
+                hasCurrentUser: !!currentUser,
+                currentUserEmail: currentUser?.email,
+                userDataRole: userData.role,
+                isStudent: userData.role === 'student'
+            });
+            
+            if (currentUser && userData.role === 'student') {
+                console.log('✅ 教師/管理員創建學生帳號，使用特殊方法');
+                return await this.createUserWithoutLogin(email, password, userData, currentUser);
+            } else {
+                console.log('⚠️ 使用一般創建方法，原因:', {
+                    noCurrentUser: !currentUser,
+                    notStudent: userData.role !== 'student',
+                    role: userData.role
+                });
+            }
+            
             const userCredential = await this.auth.createUserWithEmailAndPassword(email, password);
             const user = userCredential.user;
             
-            // 儲存使用者額外資訊
-            await this.db.collection('users').doc(user.uid).set({
+            // 儲存使用者基本資訊
+            const userDoc = {
                 email: email,
                 role: userData.role || 'user',
                 name: userData.name || email,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            };
+
+            // 如果有學號，加入基本資料
+            if (userData.studentNumber) {
+                userDoc.studentNumber = userData.studentNumber;
+            }
+
+            await this.db.collection('users').doc(user.uid).set(userDoc);
+            
+            // 如果是學生，同時在 students 集合中創建記錄
+            if (userData.role === 'student' && userData.teacherId) {
+                console.log('🎓 創建學生記錄，教師ID:', userData.teacherId);
+                try {
+                    await this.db.collection('students').doc(user.uid).set({
+                        teacherId: userData.teacherId,
+                        studentNumber: userData.studentNumber || '',
+                        name: userData.name || email,
+                        email: email,
+                        status: 'active',
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    console.log('✅ 學生記錄創建成功');
+                } catch (studentError) {
+                    console.error('❌ 創建學生記錄失敗:', studentError);
+                    throw new Error('學生記錄創建失敗: ' + studentError.message);
+                }
+            }
             
             return { success: true, user: user };
         } catch (error) {
@@ -250,6 +368,81 @@ class FirebaseService {
         } catch (error) {
             return { success: false, error: error.message };
         }
+    }
+
+    // 學生功能：獲取教師的資料
+    async getTeacherDataForStudent(studentId) {
+        try {
+            // 首先查找學生記錄以獲取教師ID
+            const studentDoc = await this.db.collection('students').doc(studentId).get();
+            
+            if (!studentDoc.exists) {
+                return { success: false, error: '找不到學生記錄' };
+            }
+            
+            const studentData = studentDoc.data();
+            const teacherId = studentData.teacherId;
+            
+            if (!teacherId) {
+                return { success: false, error: '學生沒有關聯的教師' };
+            }
+            
+            // 直接讀取教師的資料（避免權限問題）
+            const [teacherInfo, teacherUserData, teacherTrackingData] = await Promise.all([
+                this.db.collection('users').doc(teacherId).get(),
+                this.db.collection('userData').doc(teacherId).get(),
+                this.db.collection('trackingData').doc(teacherId).get()
+            ]);
+            
+            const teacherInfoData = teacherInfo.exists ? teacherInfo.data() : null;
+            const teacherUserDataData = teacherUserData.exists ? teacherUserData.data() : null;
+            const teacherTrackingDataData = teacherTrackingData.exists ? teacherTrackingData.data() : {};
+            
+            return {
+                success: true,
+                teacherId: teacherId,
+                teacherInfo: teacherInfoData,
+                teacherData: teacherUserDataData,
+                teacherTrackingData: teacherTrackingDataData,
+                studentInfo: studentData
+            };
+            
+        } catch (error) {
+            console.error('獲取教師資料錯誤:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 學生監聽教師資料變化
+    onTeacherDataChanged(studentId, callback) {
+        // 先獲取學生的教師ID，然後監聽教師的資料
+        this.getTeacherDataForStudent(studentId).then(result => {
+            if (result.success && result.teacherId) {
+                // 返回監聽器，同時監聽教師的 userData 和 trackingData
+                const teacherId = result.teacherId;
+                
+                // 監聽教師的 userData 變化
+                const unsubscribeUserData = this.db.collection('userData').doc(teacherId)
+                    .onSnapshot(doc => {
+                        if (doc.exists) {
+                            callback({
+                                type: 'userData',
+                                data: doc.data(),
+                                teacherId: teacherId
+                            });
+                        }
+                    });
+                
+                // 返回取消監聽函數
+                return unsubscribeUserData;
+            } else {
+                console.error('無法監聽教師資料:', result.error);
+                return () => {}; // 空的取消監聽函數
+            }
+        }).catch(error => {
+            console.error('設定教師資料監聽器錯誤:', error);
+            return () => {};
+        });
     }
 }
 
