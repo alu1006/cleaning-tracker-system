@@ -80,11 +80,64 @@
                 const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
                 const userData = userDoc.data();
                 
-                document.getElementById('userInfo').textContent = 
-                    `${userData?.name || currentUser.email} (${userData?.role === 'admin' ? '管理員' : '使用者'})`;
+                const userName = userData?.name || currentUser.displayName || currentUser.email;
+                const userRole = userData?.role || 'user';
+                const userInfoElement = document.getElementById('userInfo');
+                const photoURL = currentUser.photoURL || userData?.photoURL;
+                
+                // 檢查是否為學生模式
+                const isStudentMode = sessionStorage.getItem('isStudentMode') === 'true';
+                const teacherName = sessionStorage.getItem('teacherName');
+                
+                if (photoURL) {
+                    userInfoElement.innerHTML = `
+                        <img src="${photoURL}" alt="User Avatar" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; vertical-align: middle;">
+                        ${userName} (${userRole === 'admin' ? '管理員' : userRole === 'teacher' ? '教師' : '學生'})
+                        ${isStudentMode ? ` - 查看教師 ${teacherName} 的資料` : ''}
+                    `;
+                } else {
+                    userInfoElement.textContent = `${userName} (${userRole === 'admin' ? '管理員' : userRole === 'teacher' ? '教師' : '學生'})${isStudentMode ? ` - 查看教師 ${teacherName} 的資料` : ''}`;
+                }
+                
+                // 根據角色添加對應按鈕
+                if (userRole === 'teacher') {
+                    const navUser = document.querySelector('.nav-user');
+                    const logoutBtn = navUser.querySelector('.logout-btn');
+                    
+                    // 添加學生管理按鈕
+                    const studentMgmtBtn = document.createElement('button');
+                    studentMgmtBtn.textContent = '👥 學生管理';
+                    studentMgmtBtn.className = 'secondary-btn';
+                    studentMgmtBtn.onclick = () => window.location.href = 'student-management.html';
+                    
+                    // 添加追蹤按鈕
+                    const trackingBtn = document.createElement('button');
+                    trackingBtn.textContent = '📊 追蹤頁面';
+                    trackingBtn.className = 'secondary-btn';
+                    trackingBtn.onclick = () => window.location.href = 'tracking.html';
+                    
+                    navUser.insertBefore(studentMgmtBtn, logoutBtn);
+                    navUser.insertBefore(trackingBtn, logoutBtn);
+                } else if (userRole === 'student') {
+                    // 學生添加追蹤按鈕
+                    const navUser = document.querySelector('.nav-user');
+                    const logoutBtn = navUser.querySelector('.logout-btn');
+                    
+                    const trackingBtn = document.createElement('button');
+                    trackingBtn.textContent = '📊 追蹤頁面';
+                    trackingBtn.className = 'secondary-btn';
+                    trackingBtn.onclick = () => window.location.href = 'tracking.html';
+                    
+                    navUser.insertBefore(trackingBtn, logoutBtn);
+                    
+                    // 為學生顯示只讀模式提示
+                    if (isStudentMode) {
+                        addStudentModeNotice();
+                    }
+                }
                     
                 // 載入現有資料
-                loadExistingData();
+                loadExistingData(userRole, isStudentMode);
             } catch (error) {
                 console.error('載入使用者資訊錯誤:', error);
                 // 如果載入 Firebase 資料失敗，使用 sessionStorage 備援
@@ -113,42 +166,78 @@
         }
 
         // 載入現有資料
-        async function loadExistingData() {
+        async function loadExistingData(userRole = 'user', isStudentMode = false) {
             if (!currentUser) {
                 console.log('使用者未登入，無法載入資料');
                 return false;
             }
             
             console.log('開始載入現有資料，使用者 UID:', currentUser.uid);
+            console.log('使用者角色:', userRole, '學生模式:', isStudentMode);
             
             try {
-                const result = await window.firebaseService.getUserData(currentUser.uid);
-                console.log('getUserData 結果:', result);
+                let result;
                 
-                if (result.success && result.data) {
-                    console.log('找到現有資料:', result.data);
+                if (userRole === 'student' && isStudentMode) {
+                    // 學生模式：載入教師的資料
+                    console.log('🎓 學生模式：載入教師資料');
+                    result = await window.firebaseService.getTeacherDataForStudent(currentUser.uid);
                     
-                    cleaningData = result.data.cleaningTasks || [];
-                    studentData = result.data.students || [];
-                    assignments = result.data.assignments || {};
-                    isDataLoaded = true;
+                    if (result.success) {
+                        console.log('找到教師資料:', result.userData);
+                        
+                        cleaningData = result.userData?.cleaningTasks || [];
+                        studentData = result.userData?.students || [];
+                        assignments = result.userData?.assignments || {};
+                        isDataLoaded = true;
+                        
+                        // 添加教師和學生資訊到全域變數
+                        window.teacherInfo = result.teacherInfo;
+                        window.studentInfo = result.studentInfo;
+                        
+                        console.log('載入的教師資料:', {
+                            cleaningTasks: cleaningData.length,
+                            students: studentData.length,
+                            assignments: Object.keys(assignments).length,
+                            teacher: result.teacherInfo?.name
+                        });
+                    } else {
+                        console.log('載入教師資料失敗:', result.error);
+                        showNoDataMessage('無法載入教師資料：' + result.error);
+                        return false;
+                    }
+                } else {
+                    // 一般模式：載入自己的資料
+                    result = await window.firebaseService.getUserData(currentUser.uid);
+                    console.log('getUserData 結果:', result);
                     
-                    console.log('載入的資料:', {
-                        cleaningTasks: cleaningData.length,
-                        students: studentData.length,
-                        assignments: Object.keys(assignments).length
-                    });
-                    
+                    if (result.success && result.data) {
+                        console.log('找到現有資料:', result.data);
+                        
+                        cleaningData = result.data.cleaningTasks || [];
+                        studentData = result.data.students || [];
+                        assignments = result.data.assignments || {};
+                        isDataLoaded = true;
+                        
+                        console.log('載入的資料:', {
+                            cleaningTasks: cleaningData.length,
+                            students: studentData.length,
+                            assignments: Object.keys(assignments).length
+                        });
+                    } else {
+                        console.log('沒有找到現有資料或資料無效');
+                    }
+                }
+                
+                if (isDataLoaded) {
                     // 標記已分配的學生
                     assignedStudents.clear();
                     Object.values(assignments).forEach(studentList => {
                         studentList.forEach(student => assignedStudents.add(student));
                     });
                     
-                    displayExistingData();
+                    displayExistingData(userRole, isStudentMode);
                     return true;
-                } else {
-                    console.log('沒有找到現有資料或資料無效');
                 }
             } catch (error) {
                 console.error('載入資料錯誤:', error);
@@ -156,11 +245,86 @@
             return false;
         }
 
+        // 添加學生模式提示
+        function addStudentModeNotice() {
+            const container = document.querySelector('.container');
+            const notice = document.createElement('div');
+            notice.className = 'student-mode-notice';
+            notice.innerHTML = `
+                <div style="background: #e3f2fd; border: 2px solid #2196F3; border-radius: 8px; padding: 15px; margin: 20px 0;">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 24px; margin-right: 10px;">🎓</span>
+                        <strong style="color: #1976D2; font-size: 18px;">學生查看模式</strong>
+                    </div>
+                    <p style="margin: 5px 0; color: #424242;">
+                        📖 您正在查看教師 <strong>${sessionStorage.getItem('teacherName') || '您的老師'}</strong> 匯入的打掃資料
+                    </p>
+                    <p style="margin: 5px 0; color: #666; font-size: 14px;">
+                        ⚠️ 學生只能查看資料，無法編輯或重新匯入檔案
+                    </p>
+                </div>
+            `;
+            container.insertBefore(notice, container.firstChild);
+        }
+        
+        // 禁用學生的編輯功能
+        function disableStudentEditing() {
+            // 禁用檔案上傳
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            fileInputs.forEach(input => {
+                input.disabled = true;
+                input.style.opacity = '0.5';
+            });
+            
+            // 禁用檔案上傳標籤點擊
+            const fileLabels = document.querySelectorAll('.file-label');
+            fileLabels.forEach(label => {
+                label.style.pointerEvents = 'none';
+                label.style.opacity = '0.5';
+                label.innerHTML = label.innerHTML.replace('選擇', '檢視');
+            });
+            
+            // 禁用儲存和編輯按鈕
+            const editButtons = document.querySelectorAll('.edit-btn, .delete-btn, .duplicate-btn, #saveAssignments');
+            editButtons.forEach(btn => {
+                if (btn) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                    btn.style.pointerEvents = 'none';
+                }
+            });
+            
+            // 修改步驟標題
+            const stepHeaders = document.querySelectorAll('.step-container h2');
+            stepHeaders.forEach(header => {
+                header.innerHTML = header.innerHTML.replace('步驟', '檢視').replace('匯入', '查看').replace('分配', '檢視');
+            });
+        }
+        
+        // 顯示無資料訊息
+        function showNoDataMessage(message) {
+            const container = document.querySelector('.container');
+            container.innerHTML = `
+                <div style="text-align: center; padding: 50px;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📝</div>
+                    <h2 style="color: #666; margin-bottom: 15px;">${message}</h2>
+                    <p style="color: #999; margin-bottom: 20px;">請聯絡您的教師確認帳號設定</p>
+                    <button onclick="window.location.href='tracking.html'" class="secondary-btn">返回追蹤頁面</button>
+                </div>
+            `;
+        }
+
         // 顯示現有資料
-        function displayExistingData() {
+        function displayExistingData(userRole = 'user', isStudentMode = false) {
             console.log('開始顯示現有資料');
             console.log('cleaningData.length:', cleaningData.length);
             console.log('studentData.length:', studentData.length);
+            console.log('使用者角色:', userRole, '學生模式:', isStudentMode);
+            
+            // 如果是學生模式，禁用編輯功能
+            if (userRole === 'student' && isStudentMode) {
+                disableStudentEditing();
+            }
             
             if (cleaningData.length > 0) {
                 document.getElementById('cleaningPreview').innerHTML = `

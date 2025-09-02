@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>修復學生記錄 - 打掃追蹤系統</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .student-item {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+            background: #f8f9fa;
+        }
+        .fix-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .fix-btn:disabled {
+            background: #ccc;
+        }
+        .status {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .warning { color: #ffc107; }
+    </style>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 修復學生記錄</h1>
+        <p>這個工具會檢查所有學生使用者，並為缺少 students 集合記錄的學生創建對應記錄。</p>
+        
+        <div id="status">載入中...</div>
+        
+        <div id="studentList"></div>
+        
+        <div style="margin-top: 20px;">
+            <button id="fixAllBtn" class="fix-btn">修復所有缺少記錄的學生</button>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let studentsNeedingFix = [];
+
+        // 檢查登入狀態
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                const userDoc = await window.firebaseService.db.collection('users').doc(user.uid).get();
+                const userData = userDoc.data();
+                
+                if (userData?.role === 'admin' || userData?.role === 'teacher') {
+                    await scanStudentRecords();
+                } else {
+                    document.getElementById('status').innerHTML = '❌ 只有管理員或教師可以使用此工具';
+                }
+            } else {
+                document.getElementById('status').innerHTML = '❌ 請先登入管理員或教師帳號';
+            }
+        });
+
+        async function scanStudentRecords() {
+            document.getElementById('status').innerHTML = '🔍 掃描學生記錄中...';
+            
+            try {
+                // 1. 獲取所有角色為 student 的使用者
+                const usersSnapshot = await window.firebaseService.db.collection('users')
+                    .where('role', '==', 'student').get();
+                
+                const studentListDiv = document.getElementById('studentList');
+                studentListDiv.innerHTML = '';
+                studentsNeedingFix = [];
+                
+                for (const userDoc of usersSnapshot.docs) {
+                    const userId = userDoc.id;
+                    const userData = userDoc.data();
+                    
+                    // 2. 檢查是否在 students 集合中有對應記錄
+                    const studentDoc = await window.firebaseService.db.collection('students').doc(userId).get();
+                    
+                    const studentItem = document.createElement('div');
+                    studentItem.className = 'student-item';
+                    
+                    if (studentDoc.exists) {
+                        const studentData = studentDoc.data();
+                        studentItem.innerHTML = `
+                            <strong>${userData.name || userData.email}</strong> (${userData.studentNumber || '無學號'})
+                            <span class="status success">✅ 記錄正常</span>
+                            <br><small>教師ID: ${studentData.teacherId || '未設定'}</small>
+                        `;
+                    } else {
+                        studentsNeedingFix.push({ userId, userData });
+                        studentItem.innerHTML = `
+                            <strong>${userData.name || userData.email}</strong> (${userData.studentNumber || '無學號'})
+                            <span class="status error">❌ 缺少 students 記錄</span>
+                            <button class="fix-btn" onclick="fixStudentRecord('${userId}')">修復</button>
+                            <span id="status-${userId}"></span>
+                        `;
+                    }
+                    
+                    studentListDiv.appendChild(studentItem);
+                }
+                
+                document.getElementById('status').innerHTML = 
+                    `📊 掃描完成：找到 ${usersSnapshot.size} 個學生帳號，其中 ${studentsNeedingFix.length} 個需要修復`;
+                
+                // 更新修復所有按鈕狀態
+                const fixAllBtn = document.getElementById('fixAllBtn');
+                if (studentsNeedingFix.length > 0) {
+                    fixAllBtn.disabled = false;
+                    fixAllBtn.textContent = `修復所有 ${studentsNeedingFix.length} 個學生記錄`;
+                } else {
+                    fixAllBtn.disabled = true;
+                    fixAllBtn.textContent = '無需修復';
+                }
+                
+            } catch (error) {
+                console.error('掃描學生記錄錯誤:', error);
+                document.getElementById('status').innerHTML = '❌ 掃描失敗：' + error.message;
+            }
+        }
+
+        async function fixStudentRecord(studentId) {
+            const statusSpan = document.getElementById(`status-${studentId}`);
+            statusSpan.innerHTML = '<span class="warning">修復中...</span>';
+            
+            try {
+                const student = studentsNeedingFix.find(s => s.userId === studentId);
+                if (!student) {
+                    statusSpan.innerHTML = '<span class="error">❌ 找不到學生資料</span>';
+                    return;
+                }
+                
+                // 創建 students 記錄，將當前登入的教師設為該學生的教師
+                await window.firebaseService.db.collection('students').doc(studentId).set({
+                    teacherId: currentUser.uid,  // 設定當前登入的教師為該學生的教師
+                    studentNumber: student.userData.studentNumber || '',
+                    name: student.userData.name || student.userData.email,
+                    email: student.userData.email,
+                    status: 'active',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                statusSpan.innerHTML = '<span class="success">✅ 修復成功</span>';
+                
+                // 從需要修復的列表中移除
+                studentsNeedingFix = studentsNeedingFix.filter(s => s.userId !== studentId);
+                
+                // 更新修復所有按鈕
+                const fixAllBtn = document.getElementById('fixAllBtn');
+                if (studentsNeedingFix.length > 0) {
+                    fixAllBtn.textContent = `修復所有 ${studentsNeedingFix.length} 個學生記錄`;
+                } else {
+                    fixAllBtn.disabled = true;
+                    fixAllBtn.textContent = '無需修復';
+                }
+                
+            } catch (error) {
+                console.error('修復學生記錄錯誤:', error);
+                statusSpan.innerHTML = '<span class="error">❌ 修復失敗</span>';
+            }
+        }
+
+        // 修復所有學生記錄
+        document.getElementById('fixAllBtn').addEventListener('click', async () => {
+            const fixAllBtn = document.getElementById('fixAllBtn');
+            fixAllBtn.disabled = true;
+            fixAllBtn.textContent = '修復中...';
+            
+            const studentsToFix = [...studentsNeedingFix]; // 複製陣列
+            
+            for (const student of studentsToFix) {
+                await fixStudentRecord(student.userId);
+                // 短暫延遲避免過於頻繁的請求
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            alert('所有學生記錄修復完成！');
+        });
+    </script>
+</body>
+</html>

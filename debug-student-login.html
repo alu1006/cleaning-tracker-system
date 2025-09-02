@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學生登入診斷工具</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .debug-title { font-weight: bold; color: #333; margin-bottom: 10px; }
+        .debug-info { background: #f9f9f9; padding: 10px; font-family: monospace; white-space: pre-wrap; }
+        .error { color: red; }
+        .success { color: green; }
+        .warning { color: orange; }
+        .input-group { margin: 10px 0; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .input-group input { padding: 8px; width: 300px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 15px; background: #007cba; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a87; }
+    </style>
+</head>
+<body>
+    <h1>🔍 學生登入診斷工具</h1>
+    
+    <div class="debug-section">
+        <div class="debug-title">1. 學生登入測試</div>
+        <div class="input-group">
+            <label>學生帳號（Email）：</label>
+            <input type="email" id="studentEmail" placeholder="student@example.com">
+        </div>
+        <div class="input-group">
+            <label>密碼：</label>
+            <input type="password" id="studentPassword" placeholder="password">
+        </div>
+        <button onclick="testStudentLogin()">測試學生登入</button>
+        <div id="loginResult" class="debug-info"></div>
+    </div>
+
+    <div class="debug-section">
+        <div class="debug-title">2. 學生記錄檢查</div>
+        <div class="input-group">
+            <label>學生 UID：</label>
+            <input type="text" id="studentUid" placeholder="學生的 Firebase UID">
+        </div>
+        <button onclick="checkStudentRecord()">檢查學生記錄</button>
+        <div id="studentRecordResult" class="debug-info"></div>
+    </div>
+
+    <div class="debug-section">
+        <div class="debug-title">3. 教師資料檢查</div>
+        <div class="input-group">
+            <label>教師 UID：</label>
+            <input type="text" id="teacherUid" placeholder="教師的 Firebase UID">
+        </div>
+        <button onclick="checkTeacherData()">檢查教師資料</button>
+        <div id="teacherDataResult" class="debug-info"></div>
+    </div>
+
+    <div class="debug-section">
+        <div class="debug-title">4. 學生-教師關聯測試</div>
+        <button onclick="testStudentTeacherAssociation()">測試學生-教師關聯</button>
+        <div id="associationResult" class="debug-info"></div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="firebase-simple.js"></script>
+
+    <script>
+        let currentUser = null;
+
+        // 初始化
+        window.addEventListener('load', async () => {
+            try {
+                // 檢查是否已經登入
+                firebase.auth().onAuthStateChanged((user) => {
+                    if (user) {
+                        currentUser = user;
+                        log('loginResult', `已登入使用者: ${user.email} (${user.uid})`, 'success');
+                    } else {
+                        currentUser = null;
+                        log('loginResult', '尚未登入', 'warning');
+                    }
+                });
+            } catch (error) {
+                log('loginResult', `初始化錯誤: ${error.message}`, 'error');
+            }
+        });
+
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : ''));
+            element.innerHTML = `<div class="${className}">[${timestamp}] ${message}</div>` + element.innerHTML;
+        }
+
+        async function testStudentLogin() {
+            const email = document.getElementById('studentEmail').value;
+            const password = document.getElementById('studentPassword').value;
+
+            if (!email || !password) {
+                log('loginResult', '請輸入帳號和密碼', 'error');
+                return;
+            }
+
+            log('loginResult', `開始測試學生登入: ${email}`);
+
+            try {
+                // 登入
+                const result = await window.firebaseService.signIn(email, password);
+                if (!result.success) {
+                    log('loginResult', `登入失敗: ${result.error}`, 'error');
+                    return;
+                }
+
+                currentUser = result.user;
+                log('loginResult', `登入成功: ${result.user.email} (${result.user.uid})`, 'success');
+
+                // 檢查使用者角色
+                const userData = await window.firebaseService.getUserData(result.user.uid);
+                if (userData.success) {
+                    const role = userData.data?.role || 'user';
+                    log('loginResult', `使用者角色: ${role}`);
+                    
+                    if (role === 'student') {
+                        log('loginResult', '確認為學生角色，檢查教師關聯...', 'success');
+                        await checkStudentTeacherConnection(result.user.uid);
+                    } else {
+                        log('loginResult', `非學生角色 (${role})`, 'warning');
+                    }
+                } else {
+                    log('loginResult', `無法取得使用者資料: ${userData.error}`, 'error');
+                }
+
+            } catch (error) {
+                log('loginResult', `登入測試錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkStudentTeacherConnection(studentId) {
+            try {
+                log('loginResult', `檢查學生 ${studentId} 的教師關聯...`);
+                
+                const teacherDataResult = await window.firebaseService.getTeacherDataForStudent(studentId);
+                
+                if (teacherDataResult.success) {
+                    log('loginResult', `✅ 找到關聯教師: ${teacherDataResult.teacherId}`, 'success');
+                    log('loginResult', `教師姓名: ${teacherDataResult.teacherInfo?.name || '未知'}`);
+                    log('loginResult', `學生姓名: ${teacherDataResult.studentInfo?.name || '未知'}`);
+                    log('loginResult', `學生學號: ${teacherDataResult.studentInfo?.studentNumber || '未知'}`);
+                    
+                    // 檢查教師是否有匯入資料
+                    if (teacherDataResult.userData && teacherDataResult.userData.cleaningTasks) {
+                        log('loginResult', `✅ 教師有匯入資料 (${teacherDataResult.userData.cleaningTasks.length} 項打掃任務)`, 'success');
+                        log('loginResult', `分配任務數: ${Object.keys(teacherDataResult.userData.assignments || {}).length}`);
+                    } else {
+                        log('loginResult', `❌ 教師尚未匯入清掃資料`, 'warning');
+                    }
+                } else {
+                    log('loginResult', `❌ 無法找到關聯教師: ${teacherDataResult.error}`, 'error');
+                }
+            } catch (error) {
+                log('loginResult', `檢查教師關聯錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkStudentRecord() {
+            const studentUid = document.getElementById('studentUid').value;
+            if (!studentUid) {
+                log('studentRecordResult', '請輸入學生 UID', 'error');
+                return;
+            }
+
+            try {
+                log('studentRecordResult', `檢查學生記錄: ${studentUid}`);
+                
+                const studentDoc = await window.firebaseService.db.collection('students').doc(studentUid).get();
+                
+                if (studentDoc.exists) {
+                    const studentData = studentDoc.data();
+                    log('studentRecordResult', `✅ 找到學生記錄:`, 'success');
+                    log('studentRecordResult', JSON.stringify(studentData, null, 2));
+                    
+                    if (studentData.teacherId) {
+                        log('studentRecordResult', `關聯教師 ID: ${studentData.teacherId}`, 'success');
+                    } else {
+                        log('studentRecordResult', `❌ 缺少教師 ID`, 'error');
+                    }
+                } else {
+                    log('studentRecordResult', `❌ 找不到學生記錄`, 'error');
+                }
+            } catch (error) {
+                log('studentRecordResult', `檢查學生記錄錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkTeacherData() {
+            const teacherUid = document.getElementById('teacherUid').value;
+            if (!teacherUid) {
+                log('teacherDataResult', '請輸入教師 UID', 'error');
+                return;
+            }
+
+            try {
+                log('teacherDataResult', `檢查教師資料: ${teacherUid}`);
+                
+                const userData = await window.firebaseService.getUserData(teacherUid);
+                
+                if (userData.success) {
+                    log('teacherDataResult', `✅ 找到教師資料:`, 'success');
+                    
+                    if (userData.data.cleaningTasks) {
+                        log('teacherDataResult', `清掃任務數: ${userData.data.cleaningTasks.length}`);
+                        log('teacherDataResult', `分配任務數: ${Object.keys(userData.data.assignments || {}).length}`);
+                        log('teacherDataResult', `學生名單數: ${userData.data.students?.length || 0}`);
+                    } else {
+                        log('teacherDataResult', `❌ 教師尚未匯入清掃資料`, 'warning');
+                    }
+                } else {
+                    log('teacherDataResult', `❌ 無法取得教師資料: ${userData.error}`, 'error');
+                }
+            } catch (error) {
+                log('teacherDataResult', `檢查教師資料錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStudentTeacherAssociation() {
+            if (!currentUser) {
+                log('associationResult', '請先登入', 'error');
+                return;
+            }
+
+            try {
+                log('associationResult', `測試當前使用者的學生-教師關聯: ${currentUser.uid}`);
+                
+                // 測試 getTeacherDataForStudent 方法
+                const result = await window.firebaseService.getTeacherDataForStudent(currentUser.uid);
+                
+                if (result.success) {
+                    log('associationResult', `✅ 關聯測試成功`, 'success');
+                    log('associationResult', `教師 ID: ${result.teacherId}`);
+                    log('associationResult', `教師姓名: ${result.teacherInfo?.name || '未知'}`);
+                    log('associationResult', `學生姓名: ${result.studentInfo?.name || '未知'}`);
+                    log('associationResult', `學生學號: ${result.studentInfo?.studentNumber || '未知'}`);
+                    
+                    // 詳細資料檢查
+                    if (result.userData) {
+                        log('associationResult', `教師資料完整性檢查:`);
+                        log('associationResult', `- 清掃任務: ${result.userData.cleaningTasks?.length || 0} 項`);
+                        log('associationResult', `- 分配任務: ${Object.keys(result.userData.assignments || {}).length} 項`);
+                        log('associationResult', `- 學生名單: ${result.userData.students?.length || 0} 人`);
+                    } else {
+                        log('associationResult', `❌ 教師無使用者資料`, 'error');
+                    }
+                } else {
+                    log('associationResult', `❌ 關聯測試失敗: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                log('associationResult', `關聯測試錯誤: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

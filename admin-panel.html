@@ -50,6 +50,7 @@
                             <th>電子信箱</th>
                             <th>顯示名稱</th>
                             <th>角色</th>
+                            <th>教師ID/名稱</th>
                             <th>註冊時間</th>
                             <th>資料狀態</th>
                             <th>操作</th>
@@ -57,7 +58,7 @@
                     </thead>
                     <tbody id="accountsTableBody">
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 20px;">
+                            <td colspan="8" style="text-align: center; padding: 20px;">
                                 <div class="loading">⏳ 載入中...</div>
                             </td>
                         </tr>
@@ -135,12 +136,12 @@
                 
                 if (result.success) {
                     allUsers = result.users;
-                    displayAccounts();
+                    await displayAccounts();
                     updateStats();
                 } else {
                     console.error('載入帳號失敗:', result.error);
                     document.getElementById('accountsTableBody').innerHTML = `
-                        <tr><td colspan="7" style="text-align: center; color: red;">
+                        <tr><td colspan="8" style="text-align: center; color: red;">
                             ❌ 載入失敗: ${result.error}
                         </td></tr>
                     `;
@@ -148,7 +149,7 @@
             } catch (error) {
                 console.error('載入所有帳號錯誤:', error);
                 document.getElementById('accountsTableBody').innerHTML = `
-                    <tr><td colspan="7" style="text-align: center; color: red;">
+                    <tr><td colspan="8" style="text-align: center; color: red;">
                         ❌ 系統錯誤，請重新整理頁面
                     </td></tr>
                 `;
@@ -156,12 +157,12 @@
         }
 
         // 顯示帳號列表
-        function displayAccounts() {
+        async function displayAccounts() {
             const tbody = document.getElementById('accountsTableBody');
             
             if (allUsers.length === 0) {
                 tbody.innerHTML = `
-                    <tr><td colspan="7" style="text-align: center;">
+                    <tr><td colspan="8" style="text-align: center;">
                         📝 尚未有其他使用者註冊
                     </td></tr>
                 `;
@@ -169,13 +170,48 @@
             }
             
             let html = '';
-            allUsers.forEach(user => {
+            
+            // 為每個使用者加載教師資訊
+            for (const user of allUsers) {
                 const createdAt = user.createdAt ? 
                     new Date(user.createdAt.seconds * 1000).toLocaleDateString('zh-TW') : 
                     '未知';
                 
-                const roleClass = user.role === 'admin' ? 'role-admin' : 'role-user';
-                const roleName = user.role === 'admin' ? '管理員' : '使用者';
+                let roleClass, roleName;
+                if (user.role === 'admin') {
+                    roleClass = 'role-admin';
+                    roleName = '管理員';
+                } else if (user.role === 'teacher') {
+                    roleClass = 'role-teacher';
+                    roleName = '教師';
+                } else if (user.role === 'student') {
+                    roleClass = 'role-student';
+                    roleName = '學生';
+                } else {
+                    roleClass = 'role-user';
+                    roleName = '使用者';
+                }
+                
+                let teacherInfo = '-';
+                
+                // 如果是學生，加載教師資訊
+                if (user.role === 'student') {
+                    try {
+                        const teacherData = await window.firebaseService.getTeacherDataForStudent(user.id);
+                        if (teacherData.success) {
+                            const teacherName = teacherData.teacherInfo?.name || '未知教師';
+                            const teacherIdShort = teacherData.teacherId.substring(0, 8);
+                            teacherInfo = `<div style="font-size: 0.9em;">
+                                <div><strong>${teacherName}</strong></div>
+                                <div style="color: #666;"><code>${teacherIdShort}...</code></div>
+                            </div>`;
+                        } else {
+                            teacherInfo = '<span style="color: red;">❌ 無關聯教師</span>';
+                        }
+                    } catch (error) {
+                        teacherInfo = '<span style="color: red;">❌ 查詢錯誤</span>';
+                    }
+                }
                 
                 html += `
                     <tr>
@@ -183,12 +219,13 @@
                         <td>${user.email}</td>
                         <td>${user.name || '未設定'}</td>
                         <td><span class="${roleClass}">${roleName}</span></td>
+                        <td>${teacherInfo}</td>
                         <td>${createdAt}</td>
                         <td><button class="check-btn" onclick="checkUserData('${user.id}')">檢查資料</button></td>
                         <td><button class="view-btn" onclick="viewUserData('${user.id}')">查看詳情</button></td>
                     </tr>
                 `;
-            });
+            }
             
             tbody.innerHTML = html;
         }

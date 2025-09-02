@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>診斷師生資料關聯 - 打掃追蹤系統</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { color: #28a745; font-weight: bold; }
+        .error { color: #dc3545; font-weight: bold; }
+        .warning { color: #ffc107; font-weight: bold; }
+        .info { color: #17a2b8; font-weight: bold; }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .form-group {
+            margin: 10px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+    </style>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 師生資料關聯診斷工具</h1>
+        <p>這個工具會完整檢查師生資料關聯的每個環節。</p>
+        
+        <div class="section">
+            <h3>選擇要診斷的學生</h3>
+            <div class="form-group">
+                <label for="studentSelect">學生帳號</label>
+                <select id="studentSelect">
+                    <option value="">載入中...</option>
+                </select>
+            </div>
+            <button class="btn" onclick="diagnoseStudent()">🔍 開始診斷</button>
+            <button class="btn" onclick="testTeacherDataMethod()">🧪 測試 getTeacherDataForStudent 方法</button>
+        </div>
+        
+        <div class="log" id="diagnosisLog"></div>
+        
+        <div class="section" style="display: none;" id="resultsSection">
+            <h3>📊 診斷結果摘要</h3>
+            <div id="resultsSummary"></div>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let students = [];
+        let diagnosisLog = [];
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            diagnosisLog.push({ entry: logEntry, type });
+            
+            const logDiv = document.getElementById('diagnosisLog');
+            const logElement = document.createElement('div');
+            logElement.textContent = logEntry;
+            logElement.className = type;
+            
+            logDiv.appendChild(logElement);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(logEntry);
+        }
+
+        // 載入所有學生
+        async function loadStudents() {
+            try {
+                const usersSnapshot = await window.firebaseService.db.collection('users')
+                    .where('role', '==', 'student').get();
+                
+                students = [];
+                const select = document.getElementById('studentSelect');
+                select.innerHTML = '<option value="">選擇學生...</option>';
+                
+                usersSnapshot.forEach(doc => {
+                    const student = { id: doc.id, ...doc.data() };
+                    students.push(student);
+                    
+                    const option = document.createElement('option');
+                    option.value = student.id;
+                    option.textContent = `${student.name || student.email} (${student.studentNumber || '無學號'})`;
+                    select.appendChild(option);
+                });
+                
+                addLog(`✅ 載入 ${students.length} 個學生帳號`, 'success');
+            } catch (error) {
+                addLog(`❌ 載入學生列表錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        // 診斷學生資料關聯
+        async function diagnoseStudent() {
+            const studentId = document.getElementById('studentSelect').value;
+            if (!studentId) {
+                alert('請選擇一個學生');
+                return;
+            }
+
+            const student = students.find(s => s.id === studentId);
+            addLog(`\n🎯 開始診斷學生: ${student.name || student.email}`, 'info');
+            addLog(`📋 學生ID: ${studentId}`, 'info');
+            
+            // 步驟1: 檢查 users 集合
+            addLog('\n📝 步驟1: 檢查 users 集合...', 'info');
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(studentId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    addLog(`✅ users 集合記錄存在`, 'success');
+                    addLog(`   角色: ${userData.role}`, 'info');
+                    addLog(`   姓名: ${userData.name}`, 'info');
+                    addLog(`   學號: ${userData.studentNumber || '無'}`, 'info');
+                } else {
+                    addLog(`❌ users 集合沒有記錄`, 'error');
+                    return;
+                }
+            } catch (error) {
+                addLog(`❌ 檢查 users 集合錯誤: ${error.message}`, 'error');
+                return;
+            }
+
+            // 步驟2: 檢查 students 集合
+            addLog('\n📝 步驟2: 檢查 students 集合...', 'info');
+            let teacherId = null;
+            try {
+                const studentDoc = await window.firebaseService.db.collection('students').doc(studentId).get();
+                if (studentDoc.exists) {
+                    const studentData = studentDoc.data();
+                    teacherId = studentData.teacherId;
+                    addLog(`✅ students 集合記錄存在`, 'success');
+                    addLog(`   教師ID: ${teacherId}`, 'info');
+                    addLog(`   狀態: ${studentData.status}`, 'info');
+                } else {
+                    addLog(`❌ students 集合沒有記錄 - 這是問題關鍵！`, 'error');
+                    addLog(`   學生無法找到關聯教師`, 'error');
+                    return;
+                }
+            } catch (error) {
+                addLog(`❌ 檢查 students 集合錯誤: ${error.message}`, 'error');
+                return;
+            }
+
+            // 步驟3: 檢查教師資料
+            if (teacherId) {
+                addLog('\n📝 步驟3: 檢查教師資料...', 'info');
+                try {
+                    const teacherDoc = await window.firebaseService.db.collection('users').doc(teacherId).get();
+                    if (teacherDoc.exists) {
+                        const teacherData = teacherDoc.data();
+                        addLog(`✅ 教師記錄存在`, 'success');
+                        addLog(`   教師姓名: ${teacherData.name}`, 'info');
+                        addLog(`   教師角色: ${teacherData.role}`, 'info');
+                        addLog(`   教師Email: ${teacherData.email}`, 'info');
+                    } else {
+                        addLog(`❌ 教師記錄不存在`, 'error');
+                        return;
+                    }
+                } catch (error) {
+                    addLog(`❌ 檢查教師記錄錯誤: ${error.message}`, 'error');
+                    return;
+                }
+
+                // 步驟4: 檢查教師的打掃資料
+                addLog('\n📝 步驟4: 檢查教師打掃資料...', 'info');
+                try {
+                    const teacherUserData = await window.firebaseService.db.collection('userData').doc(teacherId).get();
+                    if (teacherUserData.exists) {
+                        const data = teacherUserData.data();
+                        const taskCount = data.cleaningTasks?.length || 0;
+                        const assignmentCount = Object.keys(data.assignments || {}).length;
+                        
+                        addLog(`✅ 教師打掃資料存在`, 'success');
+                        addLog(`   清掃任務數量: ${taskCount}`, 'info');
+                        addLog(`   分配組數: ${assignmentCount}`, 'info');
+                        
+                        if (taskCount === 0) {
+                            addLog(`⚠️ 教師尚未匯入打掃任務`, 'warning');
+                        }
+                        if (assignmentCount === 0) {
+                            addLog(`⚠️ 教師尚未進行任務分配`, 'warning');
+                        }
+                    } else {
+                        addLog(`❌ 教師沒有打掃資料`, 'error');
+                        addLog(`   學生將看不到任何打掃任務`, 'error');
+                    }
+                } catch (error) {
+                    addLog(`❌ 檢查教師打掃資料錯誤: ${error.message}`, 'error');
+                }
+            }
+
+            // 步驟5: 測試 getTeacherDataForStudent 方法
+            addLog('\n📝 步驟5: 測試 getTeacherDataForStudent 方法...', 'info');
+            try {
+                const result = await window.firebaseService.getTeacherDataForStudent(studentId);
+                if (result.success) {
+                    addLog(`✅ getTeacherDataForStudent 方法正常`, 'success');
+                    addLog(`   教師ID: ${result.teacherId}`, 'info');
+                    addLog(`   教師姓名: ${result.teacherInfo?.name || '無'}`, 'info');
+                    addLog(`   打掃任務: ${result.userData?.cleaningTasks?.length || 0} 個`, 'info');
+                    addLog(`   分配資料: ${Object.keys(result.userData?.assignments || {}).length} 組`, 'info');
+                } else {
+                    addLog(`❌ getTeacherDataForStudent 方法失敗: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ 測試 getTeacherDataForStudent 錯誤: ${error.message}`, 'error');
+            }
+
+            addLog('\n🏁 診斷完成！', 'success');
+        }
+
+        // 測試方法
+        async function testTeacherDataMethod() {
+            const studentId = document.getElementById('studentSelect').value;
+            if (!studentId) {
+                alert('請選擇一個學生');
+                return;
+            }
+
+            addLog('\n🧪 單獨測試 getTeacherDataForStudent 方法...', 'info');
+            try {
+                const result = await window.firebaseService.getTeacherDataForStudent(studentId);
+                addLog(`📤 方法返回結果: ${JSON.stringify(result, null, 2)}`, 'info');
+            } catch (error) {
+                addLog(`❌ 方法測試錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        // 初始化
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                addLog(`✅ 已登入: ${user.email}`, 'success');
+                await loadStudents();
+            } else {
+                addLog('❌ 請先登入', 'error');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>修復使用者角色 - 打掃追蹤系統</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .user-item {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .role-selector {
+            margin: 0 15px;
+        }
+        .role-selector select {
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .update-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .update-btn:disabled {
+            background: #ccc;
+        }
+        .admin { background: #ffe6e6; }
+        .teacher { background: #e6f3ff; }
+        .student { background: #fff4e6; }
+        .user { background: #f0f0f0; }
+        .status {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+    </style>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>👥 修復使用者角色</h1>
+        <p>這個工具可以修正所有使用者的角色設定。</p>
+        
+        <div id="status">載入中...</div>
+        
+        <div id="userList"></div>
+        
+        <div style="margin-top: 20px;">
+            <button id="batchUpdateBtn" class="update-btn">批量更新：將所有 'user' 角色改為 'teacher'</button>
+        </div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let allUsers = [];
+
+        // 檢查登入狀態
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                const userDoc = await window.firebaseService.db.collection('users').doc(user.uid).get();
+                const userData = userDoc.data();
+                
+                if (userData?.role === 'admin') {
+                    await loadAllUsers();
+                } else {
+                    document.getElementById('status').innerHTML = '❌ 只有管理員可以使用此工具';
+                }
+            } else {
+                document.getElementById('status').innerHTML = '❌ 請先登入管理員帳號';
+            }
+        });
+
+        async function loadAllUsers() {
+            document.getElementById('status').innerHTML = '🔍 載入所有使用者...';
+            
+            try {
+                const result = await window.firebaseService.getAllUsers();
+                
+                if (result.success) {
+                    allUsers = result.users;
+                    displayUsers();
+                    document.getElementById('status').innerHTML = 
+                        `📊 載入完成：共 ${allUsers.length} 個使用者`;
+                } else {
+                    document.getElementById('status').innerHTML = '❌ 載入失敗：' + result.error;
+                }
+            } catch (error) {
+                console.error('載入使用者錯誤:', error);
+                document.getElementById('status').innerHTML = '❌ 載入失敗：' + error.message;
+            }
+        }
+
+        function displayUsers() {
+            const userListDiv = document.getElementById('userList');
+            userListDiv.innerHTML = '';
+            
+            allUsers.forEach(user => {
+                const userItem = document.createElement('div');
+                userItem.className = `user-item ${user.role}`;
+                
+                const roleOptions = ['admin', 'teacher', 'student', 'user'];
+                const selectOptions = roleOptions.map(role => 
+                    `<option value="${role}" ${role === user.role ? 'selected' : ''}>${role}</option>`
+                ).join('');
+                
+                userItem.innerHTML = `
+                    <div class="user-info">
+                        <strong>${user.name || user.email}</strong><br>
+                        <small>${user.email}</small><br>
+                        <small>當前角色: <span style="font-weight: bold; color: ${getRoleColor(user.role)}">${user.role}</span></small>
+                    </div>
+                    <div class="role-selector">
+                        <select id="role-${user.id}" onchange="markForUpdate('${user.id}')">
+                            ${selectOptions}
+                        </select>
+                    </div>
+                    <button class="update-btn" onclick="updateUserRole('${user.id}')" id="btn-${user.id}">
+                        更新角色
+                    </button>
+                    <span id="status-${user.id}" class="status"></span>
+                `;
+                
+                userListDiv.appendChild(userItem);
+            });
+        }
+
+        function getRoleColor(role) {
+            switch(role) {
+                case 'admin': return '#dc3545';
+                case 'teacher': return '#007bff';
+                case 'student': return '#fd7e14';
+                case 'user': return '#6c757d';
+                default: return '#000';
+            }
+        }
+
+        function markForUpdate(userId) {
+            const btn = document.getElementById(`btn-${userId}`);
+            const select = document.getElementById(`role-${userId}`);
+            const user = allUsers.find(u => u.id === userId);
+            
+            if (select.value !== user.role) {
+                btn.style.background = '#ffc107';
+                btn.textContent = '需要更新';
+            } else {
+                btn.style.background = '#28a745';
+                btn.textContent = '更新角色';
+            }
+        }
+
+        async function updateUserRole(userId) {
+            const statusSpan = document.getElementById(`status-${userId}`);
+            const btn = document.getElementById(`btn-${userId}`);
+            const select = document.getElementById(`role-${userId}`);
+            const newRole = select.value;
+            
+            statusSpan.innerHTML = '<span style="color: #ffc107;">更新中...</span>';
+            btn.disabled = true;
+            
+            try {
+                await window.firebaseService.db.collection('users').doc(userId).update({
+                    role: newRole
+                });
+                
+                // 更新本地資料
+                const userIndex = allUsers.findIndex(u => u.id === userId);
+                if (userIndex !== -1) {
+                    allUsers[userIndex].role = newRole;
+                }
+                
+                statusSpan.innerHTML = '<span class="success">✅ 更新成功</span>';
+                btn.style.background = '#28a745';
+                btn.textContent = '更新角色';
+                
+                // 更新 UI 背景色
+                const userItem = btn.closest('.user-item');
+                userItem.className = `user-item ${newRole}`;
+                
+                // 更新角色顯示
+                const roleSpan = userItem.querySelector('small span');
+                roleSpan.textContent = newRole;
+                roleSpan.style.color = getRoleColor(newRole);
+                
+            } catch (error) {
+                console.error('更新角色錯誤:', error);
+                statusSpan.innerHTML = '<span class="error">❌ 更新失敗</span>';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // 批量更新功能
+        document.getElementById('batchUpdateBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('batchUpdateBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '批量更新中...';
+            
+            const userRoleUsers = allUsers.filter(u => u.role === 'user');
+            
+            if (userRoleUsers.length === 0) {
+                alert('沒有找到需要更新的 "user" 角色使用者');
+                btn.disabled = false;
+                btn.textContent = originalText;
+                return;
+            }
+            
+            if (!confirm(`確定要將 ${userRoleUsers.length} 個 'user' 角色改為 'teacher' 嗎？`)) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                return;
+            }
+            
+            for (const user of userRoleUsers) {
+                try {
+                    await window.firebaseService.db.collection('users').doc(user.id).update({
+                        role: 'teacher'
+                    });
+                    
+                    // 更新對應的 select 和狀態
+                    const select = document.getElementById(`role-${user.id}`);
+                    const statusSpan = document.getElementById(`status-${user.id}`);
+                    if (select && statusSpan) {
+                        select.value = 'teacher';
+                        statusSpan.innerHTML = '<span class="success">✅ 批量更新</span>';
+                    }
+                    
+                } catch (error) {
+                    console.error(`更新 ${user.email} 角色錯誤:`, error);
+                }
+            }
+            
+            alert('批量更新完成！');
+            await loadAllUsers(); // 重新載入以更新顯示
+            
+            btn.disabled = false;
+            btn.textContent = originalText;
+        });
+    </script>
+</body>
+</html>

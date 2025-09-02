@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>調試學生創建 - 打掃追蹤系統</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn:disabled {
+            background: #ccc;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 調試學生創建流程</h1>
+        <p>這個工具會詳細記錄學生創建過程，幫助找出問題所在。</p>
+        
+        <div id="status">請先登入教師帳號...</div>
+        
+        <form id="debugForm" style="display: none;">
+            <div class="form-group">
+                <label for="studentName">學生姓名</label>
+                <input type="text" id="studentName" value="調試測試" required>
+            </div>
+            <div class="form-group">
+                <label for="studentNumber">學號</label>
+                <input type="text" id="studentNumber" value="DEBUG001">
+            </div>
+            <div class="form-group">
+                <label for="studentEmail">電子信箱</label>
+                <input type="email" id="studentEmail" value="debug@test.com" required>
+            </div>
+            <div class="form-group">
+                <label for="studentPassword">密碼</label>
+                <input type="password" id="studentPassword" value="debug123" required>
+            </div>
+            <button type="submit" class="btn">🔍 調試創建學生</button>
+        </form>
+        
+        <div class="log" id="debugLog"></div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let userRole = null;
+        let debugLog = [];
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            debugLog.push(logEntry);
+            
+            const logDiv = document.getElementById('debugLog');
+            const logElement = document.createElement('div');
+            logElement.textContent = logEntry;
+            if (type === 'success') logElement.className = 'success';
+            if (type === 'error') logElement.className = 'error';
+            
+            logDiv.appendChild(logElement);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(logEntry);
+        }
+
+        // 檢查登入狀態
+        window.firebaseService.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                addLog(`✅ 使用者已登入: ${user.email} (UID: ${user.uid})`, 'success');
+                
+                try {
+                    const userDoc = await window.firebaseService.db.collection('users').doc(user.uid).get();
+                    const userData = userDoc.data();
+                    userRole = userData?.role || 'user';
+                    
+                    addLog(`📋 使用者角色: ${userRole}`);
+                    
+                    if (userRole === 'teacher' || userRole === 'admin') {
+                        document.getElementById('status').innerHTML = `✅ 已登入教師帳號: ${user.email}`;
+                        document.getElementById('debugForm').style.display = 'block';
+                        addLog(`🎯 可以開始調試學生創建流程`, 'success');
+                    } else {
+                        document.getElementById('status').innerHTML = '❌ 需要教師或管理員權限';
+                        addLog(`❌ 權限不足，需要 teacher 或 admin 角色，當前: ${userRole}`, 'error');
+                    }
+                } catch (error) {
+                    addLog(`❌ 載入使用者資料錯誤: ${error.message}`, 'error');
+                }
+            } else {
+                document.getElementById('status').innerHTML = '❌ 請先登入';
+                addLog('❌ 使用者未登入', 'error');
+            }
+        });
+
+        // 表單提交處理
+        document.getElementById('debugForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('studentName').value.trim();
+            const studentNumber = document.getElementById('studentNumber').value.trim();
+            const email = document.getElementById('studentEmail').value.trim();
+            const password = document.getElementById('studentPassword').value;
+            
+            addLog('\n🚀 開始創建學生帳號...');
+            addLog(`📝 學生資訊: 姓名=${name}, 學號=${studentNumber}, Email=${email}`);
+            addLog(`👨‍🏫 當前教師: ${currentUser.email} (UID: ${currentUser.uid})`);
+            
+            const submitBtn = e.target.querySelector('button');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '調試中...';
+            
+            try {
+                // 詳細記錄創建過程
+                addLog('📞 呼叫 window.firebaseService.createUser...');
+                
+                const userData = {
+                    role: 'student',
+                    name: name,
+                    studentNumber: studentNumber,
+                    teacherId: currentUser.uid
+                };
+                
+                addLog(`📦 傳遞的使用者資料: ${JSON.stringify(userData, null, 2)}`);
+                
+                const result = await window.firebaseService.createUser(email, password, userData);
+                
+                addLog(`📤 createUser 返回結果: ${JSON.stringify(result, null, 2)}`);
+                
+                if (result.success) {
+                    addLog(`✅ 學生帳號創建成功！新使用者 UID: ${result.user.uid}`, 'success');
+                    
+                    // 檢查 users 集合
+                    addLog('🔍 檢查 users 集合...');
+                    const userDoc = await window.firebaseService.db.collection('users').doc(result.user.uid).get();
+                    if (userDoc.exists) {
+                        addLog(`✅ users 集合記錄: ${JSON.stringify(userDoc.data(), null, 2)}`, 'success');
+                    } else {
+                        addLog('❌ users 集合中沒有找到記錄', 'error');
+                    }
+                    
+                    // 檢查 students 集合
+                    addLog('🔍 檢查 students 集合...');
+                    const studentDoc = await window.firebaseService.db.collection('students').doc(result.user.uid).get();
+                    if (studentDoc.exists) {
+                        addLog(`✅ students 集合記錄: ${JSON.stringify(studentDoc.data(), null, 2)}`, 'success');
+                    } else {
+                        addLog('❌ students 集合中沒有找到記錄 - 這就是問題所在！', 'error');
+                    }
+                    
+                } else {
+                    addLog(`❌ 學生帳號創建失敗: ${result.error}`, 'error');
+                }
+                
+            } catch (error) {
+                addLog(`💥 創建過程發生例外: ${error.message}`, 'error');
+                addLog(`📍 錯誤堆疊: ${error.stack}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🔍 調試創建學生';
+            }
+        });
+    </script>
+</body>
+</html>

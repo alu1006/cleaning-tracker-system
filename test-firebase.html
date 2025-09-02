@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase 測試</title>
+</head>
+<body>
+    <h1>Firebase API Key 測試</h1>
+    <div id="result"></div>
+    
+    <!-- Firebase CDN v8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDpgytqeXPH-6ec1IIIs84UuDhNISO7bUc",
+            authDomain: "cleaning-tracker-2025.firebaseapp.com",
+            projectId: "cleaning-tracker-2025",
+            storageBucket: "cleaning-tracker-2025.firebasestorage.app",
+            messagingSenderId: "1031453638079",
+            appId: "1:1031453638079:web:fcbcd62e827fb3f2db350a",
+            measurementId: "G-HZH8C1S3C7"
+        };
+        
+        const resultDiv = document.getElementById('result');
+        
+        try {
+            firebase.initializeApp(firebaseConfig);
+            console.log('✅ Firebase 初始化成功');
+            resultDiv.innerHTML = '<p style="color: green;">✅ Firebase 初始化成功</p>';
+            
+            // 測試 Auth 服務
+            const auth = firebase.auth();
+            console.log('✅ Firebase Auth 服務可用');
+            resultDiv.innerHTML += '<p style="color: green;">✅ Firebase Auth 服務可用</p>';
+            
+            // 嘗試創建一個測試用戶
+            resultDiv.innerHTML += '<p>🔄 測試 API Key 有效性...</p>';
+            
+            auth.createUserWithEmailAndPassword('test-delete-me@test.com', 'password123')
+                .then(() => {
+                    console.log('✅ API Key 有效，可以創建用戶');
+                    resultDiv.innerHTML += '<p style="color: green;">✅ API Key 有效</p>';
+                    // 立即刪除測試用戶
+                    return auth.currentUser.delete();
+                })
+                .then(() => {
+                    console.log('✅ 測試用戶已刪除');
+                    resultDiv.innerHTML += '<p style="color: blue;">✅ 測試完成</p>';
+                })
+                .catch((error) => {
+                    console.error('❌ API Key 測試失敗:', error);
+                    resultDiv.innerHTML += '<p style="color: red;">❌ API Key 無效: ' + error.message + '</p>';
+                });
+                
+        } catch (error) {
+            console.error('❌ Firebase 初始化失敗:', error);
+            resultDiv.innerHTML = '<p style="color: red;">❌ Firebase 初始化失敗: ' + error.message + '</p>';
+        }
+    </script>
+</body>
+</html>

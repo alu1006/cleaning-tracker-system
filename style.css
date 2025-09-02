@@ -46,6 +46,42 @@ body {
     gap: 15px;
 }
 
+/* 資料來源顯示 */
+.data-source-info {
+    margin: 10px 0;
+    display: flex;
+    justify-content: center;
+}
+
+.source-badge {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.source-icon {
+    font-size: 18px;
+    margin-right: 8px;
+}
+
+.source-text strong {
+    display: block;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.source-text small {
+    display: block;
+    opacity: 0.9;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
 /* 按鈕樣式 */
 .primary-btn {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -219,6 +255,37 @@ body {
 
 .register-btn.active:hover {
     background: #c82333;
+}
+
+.google-btn {
+    background: #4285f4;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.google-btn:hover {
+    background: #3367d6;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(66, 133, 244, 0.3);
+}
+
+.google-btn:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 .divider {
@@ -610,10 +677,13 @@ body {
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     margin-bottom: 20px;
     text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .tracking-header h2 {
-    margin-bottom: 20px;
+    margin: 0;
     color: #333;
 }
 
@@ -903,6 +973,15 @@ body {
         height: 50px;
         font-size: 20px;
     }
+    
+    .stats-section {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .stat-card {
+        min-width: unset;
+    }
 }
 
 @media (max-width: 480px) {
@@ -975,6 +1054,12 @@ body {
     margin-bottom: 25px;
 }
 
+.stats-section {
+    display: flex;
+    gap: 20px;
+    margin: 20px 0;
+}
+
 .stat-card {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -982,6 +1067,8 @@ body {
     border-radius: 10px;
     text-align: center;
     box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+    flex: 1;
+    min-width: 150px;
 }
 
 .stat-card h3 {
@@ -1037,6 +1124,24 @@ body {
     font-weight: bold;
 }
 
+.role-teacher {
+    background: #007bff;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.role-student {
+    background: #fd7e14;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
 .check-btn, .view-btn {
     padding: 6px 12px;
     border: none;
@@ -1069,4 +1174,425 @@ body {
     padding: 20px;
     border-radius: 8px;
     border: 1px solid #e9ecef;
+}
+
+/* 學生模式橫幅 */
+.student-mode-banner {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border: 2px solid #1976d2;
+    border-radius: 10px;
+    margin: 20px 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.banner-content {
+    display: flex;
+    align-items: center;
+    padding: 15px 20px;
+}
+
+.banner-icon {
+    font-size: 2rem;
+    margin-right: 15px;
+}
+
+.banner-text {
+    flex: 1;
+}
+
+.banner-text strong {
+    color: #1565c0;
+    font-size: 1.1rem;
+}
+
+.banner-text small {
+    color: #424242;
+    opacity: 0.8;
+}
+
+/* 衛生股長提示動畫 */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+    20%, 40%, 60%, 80% { transform: translateX(3px); }
+}
+
+/* 模態框樣式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 99999 !important;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.6);
+    animation: fadeIn 0.3s ease-out;
+    backdrop-filter: blur(2px);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 0;
+    border: none;
+    width: 90%;
+    max-width: 500px;
+    border-radius: 12px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease-out;
+    position: relative;
+    z-index: 100000;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 25px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.modal-header .close {
+    color: white;
+    float: right;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.modal-header .close:hover {
+    opacity: 1;
+}
+
+.modal-body {
+    padding: 25px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.cancel-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.cancel-btn:hover {
+    background: #545b62;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideDown {
+    from { 
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to { 
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 響應式模態框 */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+    
+    .modal-header,
+    .modal-body {
+        padding: 15px 20px;
+    }
+    
+    .modal-actions {
+        flex-direction: column-reverse;
+        gap: 10px;
+    }
+    
+    .modal-actions button {
+        width: 100%;
+    }
+}
+
+/* 增強的表單樣式 */
+.password-input {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.password-input input {
+    flex: 1;
+}
+
+.generate-btn,
+.toggle-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.generate-btn:hover,
+.toggle-btn:hover {
+    background: #545b62;
+}
+
+.error-message {
+    color: #dc3545;
+    font-size: 12px;
+    margin-top: 5px;
+    display: block;
+}
+
+.info-message {
+    color: #6c757d;
+    font-size: 12px;
+    margin-top: 5px;
+    display: block;
+}
+
+.password-strength {
+    margin-top: 5px;
+    padding: 5px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.password-strength.weak {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.password-strength.medium {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.password-strength.strong {
+    background: #d4edda;
+    color: #155724;
+}
+
+.form-summary {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+    border-left: 4px solid #007bff;
+}
+
+.form-summary h4 {
+    margin: 0 0 10px 0;
+    color: #007bff;
+    font-size: 14px;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    margin: 5px 0;
+    font-size: 13px;
+}
+
+.summary-item span:first-child {
+    font-weight: 600;
+    color: #495057;
+}
+
+.summary-item span:last-child {
+    color: #6c757d;
+}
+
+.btn-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #ffffff30;
+    border-top: 2px solid #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.input-group input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    outline: none;
+}
+
+.input-group input.error {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.25);
+}
+
+.input-group input.success {
+    border-color: #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);
+}
+
+@keyframes successFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -60%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* 學生列表操作按鈕 */
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    min-width: 70px;
+    justify-content: center;
+}
+
+.action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.action-btn.view {
+    background: #17a2b8;
+    color: white;
+}
+
+.action-btn.view:hover {
+    background: #138496;
+}
+
+.action-btn.enable {
+    background: #28a745;
+    color: white;
+}
+
+.action-btn.enable:hover {
+    background: #218838;
+}
+
+.action-btn.disable {
+    background: #ffc107;
+    color: #212529;
+}
+
+.action-btn.disable:hover {
+    background: #e0a800;
+}
+
+.action-btn.delete {
+    background: #dc3545;
+    color: white;
+}
+
+.action-btn.delete:hover {
+    background: #c82333;
+}
+
+.action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.action-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* 狀態標籤樣式 */
+.status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    min-width: 50px;
+}
+
+.status.active {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status.inactive {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .action-buttons {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .action-btn {
+        width: 100%;
+        min-width: unset;
+    }
 }
