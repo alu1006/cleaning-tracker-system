@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>打掃追蹤系統 - 學生管理</title>
+    <title>學生管理 - 打掃追蹤系統</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <!-- Firebase CDN -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -15,112 +14,245 @@
 <body>
     <nav class="navbar">
         <div class="nav-content">
-            <h1>👥 學生帳號管理</h1>
+            <h1>🧹 打掃追蹤系統</h1>
             <div class="nav-user">
                 <span id="userInfo"></span>
-                <div id="navButtons">
-                    <button onclick="goToImport()" class="secondary-btn">📋 資料匯入</button>
-                    <button onclick="goToTracking()" class="secondary-btn">📊 追蹤頁面</button>
-                </div>
+                <button onclick="goToTracking()" class="secondary-btn">📋 追蹤頁面</button>
+                <button onclick="goToImport()" class="secondary-btn">📥 匯入資料</button>
                 <button onclick="logout()" class="logout-btn">登出</button>
             </div>
         </div>
     </nav>
 
     <div class="container">
-        <!-- 單一學生創建 -->
+        <div class="tracking-header">
+            <h2>🎓 我的學生帳號管理</h2>
+            <button id="addStudentBtn" class="primary-btn">➕ 新增學生帳號</button>
+        </div>
+
         <div class="step-container">
-            <h2>➕ 創建學生帳號（衛生股長等）</h2>
-            <div class="info-box" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px;">
-                <p><strong>💡 用途說明：</strong></p>
-                <ul style="margin: 10px 0; padding-left: 20px;">
-                    <li>🧹 為班級衛生股長創建登入帳號</li>
-                    <li>👥 其他需要追蹤打掃的學生</li>
-                    <li>📊 學生帳號只能標記缺失，無法修改優點</li>
-                </ul>
+            <h3>📊 學生統計</h3>
+            <div class="stats-section">
+                <div class="stat-card">
+                    <h3 id="totalStudents">0</h3>
+                    <p>學生總數</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="activeStudents">0</h3>
+                    <p>活躍學生</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="studentsWithData">0</h3>
+                    <p>有資料學生</p>
+                </div>
             </div>
-            <div class="form-section">
-                <div class="input-row">
+        </div>
+
+        <div class="step-container">
+            <h3>👥 學生列表</h3>
+            <div class="tracking-table-container">
+                <table id="studentsTable" class="tracking-table">
+                    <thead>
+                        <tr>
+                            <th>學生姓名</th>
+                            <th>學號</th>
+                            <th>電子信箱</th>
+                            <th>狀態</th>
+                            <th>建立時間</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增學生模態框 -->
+    <div id="addStudentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>➕ 新增學生帳號</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="addStudentForm">
+                    <div class="input-group">
+                        <label for="studentName">學生姓名 *</label>
+                        <input type="text" id="studentName" required placeholder="請輸入學生姓名">
+                        <small class="error-message" id="nameError" style="display: none;"></small>
+                    </div>
+                    
                     <div class="input-group">
                         <label for="studentNumber">學號</label>
-                        <input type="text" id="studentNumber" placeholder="例：412101" required>
+                        <input type="text" id="studentNumber" placeholder="選填，例如：412101">
+                        <small class="info-message">學號會顯示在系統中，便於識別</small>
                     </div>
+                    
                     <div class="input-group">
-                        <label for="studentName">姓名</label>
-                        <input type="text" id="studentName" placeholder="例：李小明" required>
+                        <label for="studentEmail">電子信箱 *</label>
+                        <input type="email" id="studentEmail" required placeholder="student@example.com">
+                        <small class="info-message">學生將使用此信箱登入系統</small>
+                        <small class="error-message" id="emailError" style="display: none;"></small>
                     </div>
-                </div>
-                <div class="input-row">
+                    
                     <div class="input-group">
-                        <label for="studentEmail">電子信箱</label>
-                        <input type="email" id="studentEmail" placeholder="例：412101@school.edu.tw" required>
+                        <label for="studentPassword">初始密碼 *</label>
+                        <div class="password-input">
+                            <input type="password" id="studentPassword" required placeholder="系統將自動生成安全密碼">
+                            <button type="button" id="generatePasswordBtn" class="generate-btn">🎲 生成密碼</button>
+                            <button type="button" id="togglePasswordBtn" class="toggle-btn">👁️</button>
+                        </div>
+                        <small class="info-message">建議學生首次登入後修改密碼</small>
+                        <div class="password-strength" id="passwordStrength" style="display: none;"></div>
                     </div>
-                    <div class="input-group">
-                        <label for="studentPassword">預設密碼</label>
-                        <input type="password" id="studentPassword" placeholder="設定預設密碼" required>
+                    
+                    <div class="form-summary" id="formSummary" style="display: none;">
+                        <h4>📝 帳號資訊確認</h4>
+                        <div class="summary-item">
+                            <span>姓名：</span><span id="summaryName"></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>學號：</span><span id="summaryNumber"></span>
+                        </div>
+                        <div class="summary-item">
+                            <span>信箱：</span><span id="summaryEmail"></span>
+                        </div>
                     </div>
-                </div>
-                <div class="action-buttons">
-                    <button id="createStudent" class="primary-btn">👤 創建學生帳號</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 批量匯入學生 -->
-        <div class="step-container">
-            <h2>📊 批量匯入學生</h2>
-            <div class="upload-section">
-                <input type="file" id="studentBatchFile" accept=".xlsx,.xls" class="file-input">
-                <label for="studentBatchFile" class="file-label">
-                    📋 選擇學生名單.xlsx
-                </label>
-                <div class="import-instructions">
-                    <h4>📝 Excel 格式要求：</h4>
-                    <ul>
-                        <li><strong>學號</strong> - 學生學號欄位</li>
-                        <li><strong>姓名</strong> - 學生姓名欄位</li>
-                        <li><strong>信箱</strong> - 學生電子信箱（選填）</li>
-                        <li>系統會自動生成預設密碼：學號+123</li>
-                    </ul>
-                </div>
-                <div id="batchPreview" class="preview-section"></div>
-                <div class="action-buttons" id="batchActions" style="display: none;">
-                    <button id="createBatchStudents" class="primary-btn">👥 批量創建學生帳號</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 現有學生管理 -->
-        <div class="step-container">
-            <h2>👥 現有學生管理</h2>
-            <div id="existingStudents" class="students-list">
-                <div class="loading">載入學生列表中...</div>
-            </div>
-            <div class="action-buttons">
-                <button id="refreshStudents" class="secondary-btn">🔄 重新載入</button>
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="cancel-btn">取消</button>
+                        <button type="submit" class="primary-btn" id="submitBtn">
+                            <span class="btn-text">建立帳號</span>
+                            <span class="btn-loading" style="display: none;">
+                                <span class="spinner"></span> 建立中...
+                            </span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
     <!-- Firebase 配置 -->
-    <script src="firebase-simple-public.js"></script>
+    <script src="firebase-simple.js"></script>
     
     <script>
         let currentUser = null;
         let userRole = null;
-        let batchStudentData = [];
+        let students = [];
+        
+        // 全局變數，供表單處理使用
+        let modal = null;
 
-        // 檢查登入狀態
-        window.firebaseService.onAuthStateChanged((user) => {
+        // 立即執行備用初始化方法
+        directInitializeModal();
+
+        // 檢查登入狀態和權限
+        window.firebaseService.onAuthStateChanged(async (user) => {
             if (user) {
                 currentUser = user;
-                loadUserInfo();
+                console.log('🔄 開始載入用戶資訊...');
+                await loadUserInfo();
+                console.log('✅ 用戶資訊載入完成，角色:', userRole);
+                
+                if (userRole !== 'teacher') {
+                    alert('權限不足，僅教師可以存取學生管理功能');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                
+                try {
+                    // 檢查是否有待完成的學生創建
+                    await checkPendingStudentCreation();
+                    
+                    console.log('🔄 準備初始化模態框控制器...');
+                    // 初始化模態框控制器
+                    initializeModalControls();
+                    
+                    // 初始化表單事件監聽器
+                    initializeFormEventListeners();
+                } catch (error) {
+                    console.error('❌ 初始化過程中發生錯誤:', error);
+                    // 即使有錯誤也要嘗試初始化模態框
+                    console.log('🔄 嘗試直接初始化模態框...');
+                    initializeModalControls();
+                    // 使用備用方法
+                    directInitializeModal();
+                }
+                
+                console.log('🔄 開始載入學生列表...');
+                await loadStudents();
             } else {
                 window.location.href = 'login.html';
             }
         });
 
-        // 載入使用者資訊並檢查權限
+        // 檢查待完成的學生創建
+        async function checkPendingStudentCreation() {
+            const pendingData = sessionStorage.getItem('pendingStudentCreation');
+            if (pendingData) {
+                try {
+                    const { studentUid, studentData, teacherId } = JSON.parse(pendingData);
+                    console.log('🔄 發現待完成的學生創建:', { studentUid, teacherId });
+                    
+                    // 確認當前用戶是正確的教師
+                    if (currentUser.uid === teacherId) {
+                        console.log('✅ 教師身份確認，開始完成學生資料創建...');
+                        
+                        const result = await window.firebaseService.completeStudentDataCreation(studentUid, studentData, teacherId);
+                        
+                        if (result.success) {
+                            console.log('✅ 學生資料創建完成');
+                            
+                            // 額外驗證：檢查學生記錄是否正確創建
+                            try {
+                                const studentDoc = await window.firebaseService.db.collection('students').doc(studentUid).get();
+                                if (studentDoc.exists) {
+                                    const studentRecord = studentDoc.data();
+                                    console.log('🔍 驗證學生記錄:', {
+                                        studentId: studentUid,
+                                        teacherId: studentRecord.teacherId,
+                                        name: studentRecord.name,
+                                        email: studentRecord.email,
+                                        status: studentRecord.status
+                                    });
+                                    
+                                    if (studentRecord.teacherId === teacherId) {
+                                        console.log('✅ 師生關聯驗證成功');
+                                        alert(`學生帳號完整創建成功！\n\n✅ 認證帳號已創建\n✅ 使用者記錄已創建\n✅ 師生關聯已建立並驗證\n👨‍🏫 教師ID: ${teacherId}\n\n🎯 學生: ${studentData.name}`);
+                                    } else {
+                                        console.error('❌ 師生關聯驗證失敗，記錄中的教師ID:', studentRecord.teacherId);
+                                        alert(`學生帳號創建完成，但師生關聯可能有問題\n期望教師ID: ${teacherId}\n實際教師ID: ${studentRecord.teacherId}`);
+                                    }
+                                } else {
+                                    console.error('❌ 學生記錄未找到');
+                                    alert('學生帳號創建異常：找不到學生記錄');
+                                }
+                            } catch (verifyError) {
+                                console.error('❌ 驗證學生記錄錯誤:', verifyError);
+                                alert('學生帳號創建完成，但驗證過程發生錯誤');
+                            }
+                        } else {
+                            console.error('❌ 完成學生資料創建失敗:', result.error);
+                            alert(`學生帳號認證已創建，但資料創建失敗：\n${result.error}\n\n請使用修復工具或聯絡管理員。`);
+                        }
+                    } else {
+                        console.warn('⚠️ 教師身份不符，清除待處理資料');
+                    }
+                    
+                    // 清除 sessionStorage
+                    sessionStorage.removeItem('pendingStudentCreation');
+                    
+                } catch (error) {
+                    console.error('處理待完成學生創建錯誤:', error);
+                    sessionStorage.removeItem('pendingStudentCreation');
+                }
+            }
+        }
+
+        // 載入使用者資訊
         async function loadUserInfo() {
             if (!currentUser) return;
             
@@ -128,351 +260,772 @@
                 const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
                 const userData = userDoc.data();
                 
-                userRole = userData?.role || 'student';
+                const userName = userData?.name || currentUser.displayName || currentUser.email;
+                userRole = userData?.role || 'user';
+                const userInfoElement = document.getElementById('userInfo');
+                const photoURL = currentUser.photoURL || userData?.photoURL;
                 
-                // 檢查是否為老師或管理員
-                if (userRole !== 'teacher' && userRole !== 'admin') {
-                    alert('❌ 存取被拒：只有老師或管理員可以管理學生帳號');
-                    window.location.href = 'tracking.html';
-                    return;
-                }
+                console.log('載入使用者資訊:', { userRole, userName, userData });
                 
-                // 根據角色顯示不同的導航
-                if (userRole === 'admin') {
-                    document.getElementById('userInfo').textContent = `${userData?.name || currentUser.email} (管理員)`;
-                    document.getElementById('navButtons').innerHTML = `
-                        <button onclick="goToAdminManagement()" class="secondary-btn">🔑 管理面板</button>
-                        <button onclick="goToImport()" class="secondary-btn">📋 資料匯入</button>
-                        <button onclick="goToTracking()" class="secondary-btn">📊 追蹤頁面</button>
+                if (photoURL) {
+                    userInfoElement.innerHTML = `
+                        <img src="${photoURL}" alt="User Avatar" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; vertical-align: middle;">
+                        ${userName} (${userRole === 'teacher' ? '教師' : '使用者'})
                     `;
                 } else {
-                    document.getElementById('userInfo').textContent = `${userData?.name || currentUser.email} (老師)`;
+                    userInfoElement.textContent = `${userName} (${userRole === 'teacher' ? '教師' : '使用者'})`;
                 }
-                    
-                // 載入現有學生列表
-                loadExistingStudents();
             } catch (error) {
                 console.error('載入使用者資訊錯誤:', error);
-                alert('載入失敗，請重新整理頁面');
             }
         }
 
-        // 創建單一學生帳號
-        document.getElementById('createStudent').addEventListener('click', async function() {
-            const studentNumber = document.getElementById('studentNumber').value.trim();
-            const studentName = document.getElementById('studentName').value.trim();
-            const studentEmail = document.getElementById('studentEmail').value.trim();
-            const studentPassword = document.getElementById('studentPassword').value.trim();
-
-            if (!studentNumber || !studentName || !studentEmail || !studentPassword) {
-                alert('請填寫所有必要資訊');
+        // 載入學生列表
+        async function loadStudents() {
+            if (!currentUser) {
+                console.log('❌ loadStudents: 沒有當前用戶');
                 return;
             }
 
-            const btn = this;
-            const originalText = btn.textContent;
-            btn.textContent = '⏳ 創建中...';
-            btn.disabled = true;
+            console.log('🔍 loadStudents 檢查:', {
+                currentUserUid: currentUser.uid,
+                currentUserEmail: currentUser.email,
+                userRole: userRole
+            });
 
             try {
-                // 創建 Firebase 帳號
-                const result = await window.firebaseService.createUser(studentEmail, studentPassword, {
+                console.log('👨‍🏫 教師模式：載入自己的學生，教師ID:', currentUser.uid);
+                const studentsQuery = window.firebaseService.db.collection('students')
+                    .where('teacherId', '==', currentUser.uid);
+
+                console.log('📝 執行 Firestore 查詢...');
+                const snapshot = await studentsQuery.get();
+                students = [];
+                snapshot.forEach(doc => {
+                    students.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log('✅ 載入學生列表成功:', students);
+                updateStudentsTable();
+                updateStats();
+            } catch (error) {
+                console.error('❌ 載入學生列表錯誤:', error);
+                console.error('錯誤詳情:', {
+                    code: error.code,
+                    message: error.message,
+                    currentUserUid: currentUser?.uid,
+                    userRole: userRole
+                });
+                
+                // 嘗試簡化查詢作為備用方案
+                if (error.code === 'permission-denied' || error.message.includes('permission')) {
+                    console.log('⚠️ 權限被拒絕，可能是 Firestore 安全規則問題');
+                    alert('載入學生資料權限不足。請檢查您的帳號權限或聯絡管理員。');
+                } else if (error.code === 'invalid-argument') {
+                    console.log('⚠️ 查詢參數錯誤，嘗試不使用查詢條件');
+                    try {
+                        // 備用方案：載入所有學生然後在前端過濾
+                        const allStudentsSnapshot = await window.firebaseService.db.collection('students').get();
+                        students = [];
+                        allStudentsSnapshot.forEach(doc => {
+                            const studentData = { id: doc.id, ...doc.data() };
+                            // 教師只顯示自己的學生
+                            if (studentData.teacherId === currentUser.uid) {
+                                students.push(studentData);
+                            }
+                        });
+                        console.log('✅ 備用方案載入成功:', students);
+                        updateStudentsTable();
+                        updateStats();
+                    } catch (backupError) {
+                        console.error('❌ 備用方案也失敗:', backupError);
+                        alert('無法載入學生資料，請檢查網路連線或聯絡管理員。');
+                    }
+                } else {
+                    alert('載入學生資料時發生錯誤：' + error.message);
+                }
+            }
+        }
+
+        // 更新學生表格
+        function updateStudentsTable() {
+            const tbody = document.getElementById('studentsTableBody');
+            tbody.innerHTML = '';
+
+            students.forEach(student => {
+                const row = document.createElement('tr');
+                const createdAt = student.createdAt ? new Date(student.createdAt.toDate()).toLocaleDateString('zh-TW') : '未知';
+                
+                row.innerHTML = `
+                    <td>${student.name}</td>
+                    <td>${student.studentNumber || '未設定'}</td>
+                    <td>${student.email}</td>
+                    <td>
+                        <span class="status ${student.status}">${student.status === 'active' ? '活躍' : '停用'}</span>
+                    </td>
+                    <td>${createdAt}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button onclick="viewStudent('${student.id}')" class="action-btn view" title="查看學生詳細資料">
+                                <span>👀</span>
+                                <span>查看</span>
+                            </button>
+                            <button onclick="toggleStudentStatus('${student.id}')" class="action-btn ${student.status === 'active' ? 'disable' : 'enable'}" 
+                                    title="${student.status === 'active' ? '停用此學生帳號' : '啟用此學生帳號'}">
+                                <span>${student.status === 'active' ? '⏸️' : '▶️'}</span>
+                                <span>${student.status === 'active' ? '停用' : '啟用'}</span>
+                            </button>
+                            <button onclick="confirmDeleteStudent('${student.id}', '${student.name}')" class="action-btn delete" title="刪除此學生帳號">
+                                <span>🗑️</span>
+                                <span>刪除</span>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // 更新統計數據
+        function updateStats() {
+            document.getElementById('totalStudents').textContent = students.length;
+            document.getElementById('activeStudents').textContent = 
+                students.filter(s => s.status === 'active').length;
+            document.getElementById('studentsWithData').textContent = '計算中...';
+
+            // 異步計算有資料的學生數
+            countStudentsWithData();
+        }
+
+        // 計算有資料的學生數
+        async function countStudentsWithData() {
+            let count = 0;
+            for (const student of students) {
+                try {
+                    const userDataDoc = await window.firebaseService.db
+                        .collection('userData').doc(student.id).get();
+                    if (userDataDoc.exists && userDataDoc.data()?.cleaningTasks?.length > 0) {
+                        count++;
+                    }
+                } catch (error) {
+                    console.warn('檢查學生資料錯誤:', error);
+                }
+            }
+            document.getElementById('studentsWithData').textContent = count;
+        }
+
+        // 備用初始化方法 - 直接綁定到 DOM 元素
+        function directInitializeModal() {
+            console.log('🚨 使用備用方法初始化模態框...');
+            
+            // 使用 setTimeout 確保 DOM 已加載
+            setTimeout(function() {
+                const modal = document.getElementById('addStudentModal');
+                const addBtn = document.getElementById('addStudentBtn');
+                const closeBtn = document.querySelector('.close');
+                const cancelBtn = document.querySelector('.cancel-btn');
+
+                console.log('DOM 元素檢查 (備用方法):');
+                console.log('- modal:', modal);
+                console.log('- addBtn:', addBtn);
+                console.log('- closeBtn:', closeBtn);
+                console.log('- cancelBtn:', cancelBtn);
+                
+                // 檢查模態框內容
+                if (modal) {
+                    console.log('模態框詳細資訊:');
+                    console.log('- innerHTML 長度:', modal.innerHTML.length);
+                    console.log('- 計算樣式 display:', window.getComputedStyle(modal).display);
+                    console.log('- 計算樣式 z-index:', window.getComputedStyle(modal).zIndex);
+                    console.log('- 計算樣式 position:', window.getComputedStyle(modal).position);
+                }
+
+                if (addBtn) {
+                    console.log('🔄 設置按鈕點擊事件...');
+                    addBtn.onclick = function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🖱️ 按鈕點擊 (備用方法)');
+                        if (modal) {
+                            modal.style.display = 'block';
+                            modal.style.zIndex = '99999';
+                            modal.style.position = 'fixed';
+                            modal.style.top = '0';
+                            modal.style.left = '0';
+                            modal.style.width = '100vw';
+                            modal.style.height = '100vh';
+                            modal.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+                            modal.style.backdropFilter = 'blur(2px)';
+                            // 防止頁面滾動
+                            document.body.style.overflow = 'hidden';
+                            console.log('✅ 模態框顯示 (備用方法)');
+                            console.log('模態框當前樣式:', {
+                                display: modal.style.display,
+                                zIndex: modal.style.zIndex,
+                                position: modal.style.position,
+                                visibility: window.getComputedStyle(modal).visibility,
+                                opacity: window.getComputedStyle(modal).opacity
+                            });
+                        } else {
+                            console.error('❌ 模態框元素未找到');
+                        }
+                    };
+                    
+                    // 額外的事件監聽器
+                    addBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🖱️ 按鈕點擊 (addEventListener 備用方法)');
+                        if (modal) {
+                            modal.style.display = 'block';
+                            modal.style.zIndex = '99999';
+                            document.body.style.overflow = 'hidden';
+                            console.log('✅ 模態框顯示 (addEventListener 備用方法)');
+                        }
+                    });
+                    
+                    console.log('✅ 備用方法設置完成');
+                } else {
+                    console.error('❌ 備用方法：找不到按鈕');
+                }
+                
+                // 測試按鈕是否可點擊
+                if (addBtn) {
+                    console.log('按鈕屬性檢查:');
+                    console.log('- disabled:', addBtn.disabled);
+                    console.log('- style.display:', addBtn.style.display);
+                    console.log('- style.pointerEvents:', addBtn.style.pointerEvents);
+                    console.log('- offsetParent:', addBtn.offsetParent);
+                }
+            }, 100);
+        }
+
+        // 初始化模態框控制（在DOM載入完成後執行）
+        function initializeModalControls() {
+            console.log('🔄 開始初始化模態框控制器...');
+            
+            modal = document.getElementById('addStudentModal');
+            const addBtn = document.getElementById('addStudentBtn');
+            const closeBtn = document.querySelector('.close');
+            const cancelBtn = document.querySelector('.cancel-btn');
+
+            console.log('模態框元素檢查:');
+            console.log('- modal:', modal);
+            console.log('- addBtn:', addBtn);
+            console.log('- closeBtn:', closeBtn);
+            console.log('- cancelBtn:', cancelBtn);
+
+            if (modal && addBtn && closeBtn && cancelBtn) {
+                addBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('🖱️ 新增學生按鈕被點擊');
+                    modal.style.display = 'block';
+                    modal.style.zIndex = '99999';
+                    document.body.style.overflow = 'hidden';
+                    console.log('✅ 模態框已顯示');
+                });
+
+                closeBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('🖱️ 關閉按鈕被點擊');
+                    closeModal();
+                });
+
+                cancelBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('🖱️ 取消按鈕被點擊');
+                    closeModal();
+                });
+
+                window.addEventListener('click', (event) => {
+                    if (event.target === modal) {
+                        console.log('🖱️ 背景被點擊，關閉模態框');
+                        closeModal();
+                    }
+                });
+                
+                console.log('✅ 模態框控制器初始化完成');
+            } else {
+                console.error('❌ 模態框元素未找到');
+                console.error('缺失的元素:');
+                if (!modal) console.error('- addStudentModal 未找到');
+                if (!addBtn) console.error('- addStudentBtn 未找到');
+                if (!closeBtn) console.error('- close 按鈕未找到');
+                if (!cancelBtn) console.error('- cancel-btn 未找到');
+            }
+        }
+
+        // 生成安全密碼
+        function generateSecurePassword() {
+            const length = 12;
+            const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+            let password = "";
+            for (let i = 0; i < length; i++) {
+                password += charset.charAt(Math.floor(Math.random() * charset.length));
+            }
+            return password;
+        }
+
+        // 檢查密碼強度
+        function checkPasswordStrength(password) {
+            if (password.length < 6) return { strength: 'weak', text: '密碼太短（至少6位）' };
+            if (password.length < 8) return { strength: 'medium', text: '密碼強度中等' };
+            
+            let score = 0;
+            if (/[a-z]/.test(password)) score++;
+            if (/[A-Z]/.test(password)) score++;
+            if (/[0-9]/.test(password)) score++;
+            if (/[^A-Za-z0-9]/.test(password)) score++;
+            
+            if (score >= 3 && password.length >= 8) return { strength: 'strong', text: '密碼強度高' };
+            if (score >= 2) return { strength: 'medium', text: '密碼強度中等' };
+            return { strength: 'weak', text: '密碼強度較弱' };
+        }
+
+        // 驗證表單
+        function validateForm() {
+            const name = document.getElementById('studentName').value.trim();
+            const email = document.getElementById('studentEmail').value.trim();
+            const password = document.getElementById('studentPassword').value;
+            
+            let isValid = true;
+            
+            // 驗證姓名
+            if (!name) {
+                showError('nameError', '請輸入學生姓名');
+                document.getElementById('studentName').classList.add('error');
+                isValid = false;
+            } else if (name.length < 2) {
+                showError('nameError', '姓名至少需要2個字符');
+                document.getElementById('studentName').classList.add('error');
+                isValid = false;
+            } else {
+                hideError('nameError');
+                document.getElementById('studentName').classList.remove('error');
+                document.getElementById('studentName').classList.add('success');
+            }
+            
+            // 驗證郵箱
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!email) {
+                showError('emailError', '請輸入電子信箱');
+                document.getElementById('studentEmail').classList.add('error');
+                isValid = false;
+            } else if (!emailRegex.test(email)) {
+                showError('emailError', '請輸入有效的電子信箱格式');
+                document.getElementById('studentEmail').classList.add('error');
+                isValid = false;
+            } else {
+                hideError('emailError');
+                document.getElementById('studentEmail').classList.remove('error');
+                document.getElementById('studentEmail').classList.add('success');
+            }
+            
+            // 更新摘要
+            if (isValid) {
+                updateFormSummary();
+            }
+            
+            return isValid;
+        }
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            }
+        }
+
+        function hideError(elementId) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
+                errorElement.style.display = 'none';
+            }
+        }
+
+        function updateFormSummary() {
+            const name = document.getElementById('studentName').value.trim();
+            const number = document.getElementById('studentNumber').value.trim();
+            const email = document.getElementById('studentEmail').value.trim();
+            
+            if (name && email) {
+                document.getElementById('summaryName').textContent = name;
+                document.getElementById('summaryNumber').textContent = number || '未填寫';
+                document.getElementById('summaryEmail').textContent = email;
+                document.getElementById('formSummary').style.display = 'block';
+            } else {
+                document.getElementById('formSummary').style.display = 'none';
+            }
+        }
+
+        function resetForm() {
+            const form = document.getElementById('addStudentForm');
+            form.reset();
+            
+            // 清除錯誤狀態
+            document.querySelectorAll('.error').forEach(el => el.classList.remove('error'));
+            document.querySelectorAll('.success').forEach(el => el.classList.remove('success'));
+            document.querySelectorAll('.error-message').forEach(el => el.style.display = 'none');
+            document.getElementById('formSummary').style.display = 'none';
+            document.getElementById('passwordStrength').style.display = 'none';
+            
+            // 重新生成密碼
+            const passwordInput = document.getElementById('studentPassword');
+            const password = generateSecurePassword();
+            passwordInput.value = password;
+            
+            const strength = checkPasswordStrength(password);
+            const strengthElement = document.getElementById('passwordStrength');
+            strengthElement.textContent = strength.text;
+            strengthElement.className = `password-strength ${strength.strength}`;
+            strengthElement.style.display = 'block';
+            
+            // 重置按鈕狀態
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const btnLoading = submitBtn.querySelector('.btn-loading');
+            btnText.style.display = 'inline';
+            btnLoading.style.display = 'none';
+            submitBtn.disabled = false;
+        }
+
+        function closeModal() {
+            if (modal) {
+                modal.style.display = 'none';
+                // 恢復頁面滾動
+                document.body.style.overflow = 'auto';
+                // 重置表單
+                resetForm();
+            }
+        }
+
+        function showSuccessMessage(message) {
+            // 使用更友好的成功提示
+            const successAlert = document.createElement('div');
+            successAlert.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #28a745, #20c997);
+                color: white;
+                padding: 20px 30px;
+                border-radius: 12px;
+                box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);
+                z-index: 10000;
+                text-align: center;
+                font-size: 14px;
+                line-height: 1.5;
+                max-width: 400px;
+                animation: successFadeIn 0.3s ease-out;
+            `;
+            
+            successAlert.innerHTML = `
+                <div style="font-size: 24px; margin-bottom: 10px;">🎉</div>
+                <div style="white-space: pre-line;">${message}</div>
+            `;
+            
+            document.body.appendChild(successAlert);
+            
+            setTimeout(() => {
+                document.body.removeChild(successAlert);
+            }, 3000);
+        }
+
+        // 初始化表單事件監聽器
+        function initializeFormEventListeners() {
+            const form = document.getElementById('addStudentForm');
+            const generateBtn = document.getElementById('generatePasswordBtn');
+            const toggleBtn = document.getElementById('togglePasswordBtn');
+            const passwordInput = document.getElementById('studentPassword');
+            const nameInput = document.getElementById('studentName');
+            const emailInput = document.getElementById('studentEmail');
+
+            // 生成密碼按鈕
+            if (generateBtn) {
+                generateBtn.addEventListener('click', () => {
+                    const password = generateSecurePassword();
+                    passwordInput.value = password;
+                    
+                    const strength = checkPasswordStrength(password);
+                    const strengthElement = document.getElementById('passwordStrength');
+                    strengthElement.textContent = strength.text;
+                    strengthElement.className = `password-strength ${strength.strength}`;
+                    strengthElement.style.display = 'block';
+                });
+                
+                // 頁面載入時自動生成密碼
+                const password = generateSecurePassword();
+                passwordInput.value = password;
+                
+                const strength = checkPasswordStrength(password);
+                const strengthElement = document.getElementById('passwordStrength');
+                strengthElement.textContent = strength.text;
+                strengthElement.className = `password-strength ${strength.strength}`;
+                strengthElement.style.display = 'block';
+            }
+
+            // 密碼顯示/隱藏按鈕
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', () => {
+                    if (passwordInput.type === 'password') {
+                        passwordInput.type = 'text';
+                        toggleBtn.textContent = '🙈';
+                    } else {
+                        passwordInput.type = 'password';
+                        toggleBtn.textContent = '👁️';
+                    }
+                });
+            }
+
+            // 即時驗證
+            if (nameInput) {
+                nameInput.addEventListener('input', validateForm);
+            }
+            
+            if (emailInput) {
+                emailInput.addEventListener('input', validateForm);
+            }
+            
+            if (passwordInput) {
+                passwordInput.addEventListener('input', () => {
+                    const strength = checkPasswordStrength(passwordInput.value);
+                    const strengthElement = document.getElementById('passwordStrength');
+                    strengthElement.textContent = strength.text;
+                    strengthElement.className = `password-strength ${strength.strength}`;
+                    strengthElement.style.display = 'block';
+                });
+            }
+            if (form) {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    // 表單驗證
+                    if (!validateForm()) {
+                        console.log('❌ 表單驗證失敗');
+                        return;
+                    }
+                    
+                    const name = document.getElementById('studentName').value.trim();
+                    const studentNumber = document.getElementById('studentNumber').value.trim();
+                    const email = document.getElementById('studentEmail').value.trim();
+                    const password = document.getElementById('studentPassword').value;
+
+                    const submitBtn = document.getElementById('submitBtn');
+                    const btnText = submitBtn.querySelector('.btn-text');
+                    const btnLoading = submitBtn.querySelector('.btn-loading');
+                    
+                    // 顯示載入狀態
+                    btnText.style.display = 'none';
+                    btnLoading.style.display = 'flex';
+                    submitBtn.disabled = true;
+
+            try {
+                const result = await window.firebaseService.createUser(email, password, {
                     role: 'student',
-                    name: studentName,
+                    name: name,
                     studentNumber: studentNumber,
                     teacherId: currentUser.uid
                 });
 
                 if (result.success) {
-                    // 學生資料已在 createUser 中自動處理
-                    alert(`✅ 學生帳號創建成功！\n\n學號：${studentNumber}\n姓名：${studentName}\n信箱：${studentEmail}`);
+                    console.log('✅ 學生帳號創建成功，UID:', result.user.uid);
                     
-                    // 清空表單
-                    document.getElementById('studentNumber').value = '';
-                    document.getElementById('studentName').value = '';
-                    document.getElementById('studentEmail').value = '';
-                    document.getElementById('studentPassword').value = '';
-                    
-                    // 如果需要重新認證（避免自動登入到學生帳號）
-                    if (result.needsReauth) {
-                        alert('⚠️ 學生帳號已創建成功，系統將重新整理頁面以保持您的登入狀態。');
+                    if (result.dataCreated && result.needsImmediateReload) {
+                        console.log('✅ 學生資料創建完成，需要重新載入頁面');
+                        
+                        // 顯示成功訊息
+                        showSuccessMessage(`學生帳號 ${name} 創建成功！\n\n✅ 認證帳號已創建\n✅ 學生資料已建立\n✅ 師生關聯已建立\n\n即將重新載入頁面，請重新登入繼續操作`);
+                        
+                        // 關閉模態框
+                        closeModal();
+                        
+                        // 重新載入頁面
                         setTimeout(() => {
                             window.location.reload();
-                        }, 1000);
+                        }, 2000);
+                        return;
+                        
+                    } else if (result.dataCreated && result.needsTeacherReLogin) {
+                        
+                    } else if (result.needsDataCreation) {
+                        console.log('⚠️ 需要完成資料創建流程');
+                        
+                        // 保存資料到 sessionStorage，以便頁面重新整理後使用
+                        sessionStorage.setItem('pendingStudentCreation', JSON.stringify({
+                            studentUid: result.user.uid,
+                            studentData: result.studentData,
+                            teacherId: result.teacherId
+                        }));
+                        
+                        // 顯示成功訊息
+                        showSuccessMessage(`學生帳號 ${name} 創建成功！\n\n✅ 認證帳號已創建\n⚠️ 即將重新整理頁面以完成學生資料創建...`);
+                        
+                        // 關閉模態框（會自動重置表單）
+                        closeModal();
+                        
+                        // 重新整理頁面
+                        window.location.reload();
+                        return;
+                        
+                    } else if (result.currentUserPreserved) {
+                        console.log('✅ 教師登入狀態已保持');
+                        
+                        // 立即驗證 students 集合記錄
+                        try {
+                            const studentDoc = await window.firebaseService.db.collection('students').doc(result.user.uid).get();
+                            if (studentDoc.exists) {
+                                const studentData = studentDoc.data();
+                                console.log('✅ students 集合記錄確認:', studentData);
+                                alert(`學生帳號建立成功！\n\n✅ 使用者記錄已創建\n✅ 師生關聯已建立\n👨‍🏫 教師ID: ${studentData.teacherId}\n\n🎯 教師登入狀態已保持不變`);
+                            } else {
+                                console.warn('❌ students 集合缺少記錄');
+                                alert(`學生帳號建立成功，但師生關聯可能有問題。\n請檢查 Firebase Console 的 students 集合，或使用修復工具。`);
+                            }
+                        } catch (verifyError) {
+                            console.error('驗證學生記錄錯誤:', verifyError);
+                            alert('學生帳號建立成功，但無法驗證師生關聯。請檢查網路連線。');
+                        }
+                        
                     } else {
-                        // 重新載入學生列表
-                        loadExistingStudents();
+                        // 舊的處理方式（備用）
+                        alert(`學生帳號建立成功！\n\n✅ 使用者記錄已創建`);
                     }
-                } else {
-                    alert('❌ 創建失敗：' + result.error);
-                }
-            } catch (error) {
-                console.error('創建學生帳號錯誤:', error);
-                alert('❌ 創建失敗：系統錯誤');
-            } finally {
-                btn.textContent = originalText;
-                btn.disabled = false;
-            }
-        });
-
-        // 批量匯入學生
-        document.getElementById('studentBatchFile').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, {type: 'array'});
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    batchStudentData = XLSX.utils.sheet_to_json(worksheet);
-                    displayBatchPreview();
-                };
-                reader.readAsArrayBuffer(file);
-            }
-        });
-
-        function displayBatchPreview() {
-            const preview = document.getElementById('batchPreview');
-            if (batchStudentData.length === 0) return;
-
-            let html = '<h3>📋 匯入預覽</h3>';
-            html += '<table class="preview-table"><thead><tr>';
-            html += '<th>學號</th><th>姓名</th><th>信箱</th><th>預設密碼</th>';
-            html += '</tr></thead><tbody>';
-
-            batchStudentData.slice(0, 10).forEach(student => {
-                const studentNumber = student['學號'] || '';
-                const studentName = student['姓名'] || '';
-                const studentEmail = student['信箱'] || `${studentNumber}@school.edu.tw`;
-                const defaultPassword = `${studentNumber}123`;
-                
-                html += '<tr>';
-                html += `<td>${studentNumber}</td>`;
-                html += `<td>${studentName}</td>`;
-                html += `<td>${studentEmail}</td>`;
-                html += `<td>${defaultPassword}</td>`;
-                html += '</tr>';
-            });
-
-            html += '</tbody></table>';
-            
-            if (batchStudentData.length > 10) {
-                html += `<p>...另外還有 ${batchStudentData.length - 10} 位學生</p>`;
-            }
-            
-            html += `<div class="import-summary">
-                <h4>👥 批量匯入摘要</h4>
-                <p>✅ 準備創建 <strong>${batchStudentData.length}</strong> 位學生帳號</p>
-                <p>🔑 預設密碼格式：學號 + 123</p>
-                <p>📧 預設信箱格式：學號@school.edu.tw</p>
-            </div>`;
-            
-            preview.innerHTML = html;
-            document.getElementById('batchActions').style.display = 'block';
-        }
-
-        // 批量創建學生帳號
-        document.getElementById('createBatchStudents').addEventListener('click', async function() {
-            if (batchStudentData.length === 0) {
-                alert('請先匯入學生資料');
-                return;
-            }
-
-            if (!confirm(`確定要創建 ${batchStudentData.length} 位學生帳號嗎？`)) {
-                return;
-            }
-
-            const btn = this;
-            const originalText = btn.textContent;
-            btn.disabled = true;
-
-            let successCount = 0;
-            let failCount = 0;
-            const errors = [];
-
-            for (let i = 0; i < batchStudentData.length; i++) {
-                const student = batchStudentData[i];
-                const studentNumber = student['學號'] || '';
-                const studentName = student['姓名'] || '';
-                const studentEmail = student['信箱'] || `${studentNumber}@school.edu.tw`;
-                const defaultPassword = `${studentNumber}123`;
-
-                btn.textContent = `⏳ 創建中... (${i + 1}/${batchStudentData.length})`;
-
-                try {
-                    const result = await window.firebaseService.createUser(studentEmail, defaultPassword, {
-                        role: 'student',
-                        name: studentName,
-                        studentNumber: studentNumber,
-                        teacherId: currentUser.uid
-                    });
-
-                    if (result.success) {
-                        // 學生資料已在 createUser 中自動處理
-                        successCount++;
-                    } else {
-                        failCount++;
-                        errors.push(`${studentName} (${studentNumber}): ${result.error}`);
-                    }
-                } catch (error) {
-                    failCount++;
-                    errors.push(`${studentName} (${studentNumber}): 系統錯誤`);
-                }
-
-                // 避免請求過於頻繁
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-
-            let message = `🎉 批量創建完成！\n\n✅ 成功：${successCount} 位\n❌ 失敗：${failCount} 位`;
-            if (errors.length > 0) {
-                message += `\n\n失敗詳情：\n${errors.slice(0, 5).join('\n')}`;
-                if (errors.length > 5) {
-                    message += `\n...另外還有 ${errors.length - 5} 個錯誤`;
-                }
-            }
-
-            alert(message);
-            
-            // 重新載入學生列表
-            loadExistingStudents();
-            
-            // 清空匯入資料
-            batchStudentData = [];
-            document.getElementById('batchPreview').innerHTML = '';
-            document.getElementById('batchActions').style.display = 'none';
-            document.getElementById('studentBatchFile').value = '';
-
-            btn.textContent = originalText;
-            btn.disabled = false;
-        });
-
-        // 載入現有學生列表
-        async function loadExistingStudents() {
-            const container = document.getElementById('existingStudents');
-            container.innerHTML = '<div class="loading">載入學生列表中...</div>';
-
-            try {
-                const snapshot = await window.firebaseService.db
-                    .collection('students')
-                    .where('teacherId', '==', currentUser.uid)
-                    .get();
-
-                if (snapshot.empty) {
-                    container.innerHTML = `
-                        <div class="no-data">
-                            <p>📝 尚未創建任何學生帳號</p>
-                            <p>請使用上方功能創建學生帳號</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                let html = '<div class="students-grid">';
-                snapshot.forEach(doc => {
-                    const student = doc.data();
-                    const studentId = doc.id;
                     
-                    html += `
-                        <div class="student-card" data-student-id="${studentId}">
-                            <div class="student-info">
-                                <h4>${student.studentNumber} ${student.name}</h4>
-                                <p>📧 ${student.email}</p>
-                                <p>📅 創建時間：${student.createdAt?.toDate()?.toLocaleDateString() || '未知'}</p>
-                                <span class="status-badge ${student.status || 'active'}">${student.status === 'active' ? '🟢 正常' : '🔴 停用'}</span>
-                            </div>
-                            <div class="student-actions">
-                                <button class="action-btn reset-pwd" onclick="resetStudentPassword('${studentId}', '${student.studentNumber}')">🔑 重置密碼</button>
-                                <button class="action-btn toggle-status" onclick="toggleStudentStatus('${studentId}', '${student.status}')">
-                                    ${student.status === 'active' ? '🔴 停用' : '🟢 啟用'}
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-
-                container.innerHTML = html;
+                    modal.style.display = 'none';
+                    document.getElementById('addStudentForm').reset();
+                    document.getElementById('studentPassword').value = 'student123';
+                    await loadStudents();
+                    
+                } else {
+                    console.error('❌ 學生帳號創建失敗:', result.error);
+                    alert('建立失敗：' + result.error);
+                }
             } catch (error) {
-                console.error('載入學生列表錯誤:', error);
-                container.innerHTML = `
-                    <div class="error">
-                        <p>❌ 載入失敗</p>
-                        <button onclick="loadExistingStudents()" class="secondary-btn">🔄 重試</button>
-                    </div>
-                `;
+                console.error('建立學生帳號錯誤:', error);
+                alert('建立過程發生錯誤：' + error.message);
+            } finally {
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+            }
+                });
+                console.log('✅ 表單事件監聽器初始化完成');
+            } else {
+                console.error('❌ 表單元素未找到');
             }
         }
 
-        // 重置學生密碼
-        async function resetStudentPassword(studentId, studentNumber) {
-            if (!confirm(`確定要重置 ${studentNumber} 的密碼嗎？\n新密碼將設為：${studentNumber}123`)) {
-                return;
-            }
-
-            try {
-                // 注意：Firebase 不提供直接重置其他用戶密碼的功能
-                // 這裡只是更新資料庫記錄，實際應用中可能需要其他實作方式
-                await window.firebaseService.db.collection('students').doc(studentId).update({
-                    passwordReset: true,
-                    lastPasswordReset: firebase.firestore.FieldValue.serverTimestamp()
-                });
-
-                alert(`✅ 已標記密碼重置\n請通知學生使用新密碼：${studentNumber}123`);
-            } catch (error) {
-                console.error('重置密碼錯誤:', error);
-                alert('❌ 重置失敗：系統錯誤');
-            }
+        // 查看學生資料
+        function viewStudent(studentId) {
+            // 跳轉到追蹤頁面並顯示該學生的資料
+            sessionStorage.setItem('viewingStudentId', studentId);
+            window.location.href = 'tracking.html';
         }
 
         // 切換學生狀態
-        async function toggleStudentStatus(studentId, currentStatus) {
-            const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-            const action = newStatus === 'active' ? '啟用' : '停用';
+        async function toggleStudentStatus(studentId) {
+            const student = students.find(s => s.id === studentId);
+            if (!student) return;
+
+            const newStatus = student.status === 'active' ? 'inactive' : 'active';
             
-            if (!confirm(`確定要${action}此學生帳號嗎？`)) {
-                return;
+            try {
+                await window.firebaseService.db.collection('students').doc(studentId).update({
+                    status: newStatus
+                });
+                
+                alert(`學生狀態已${newStatus === 'active' ? '啟用' : '停用'}`);
+                await loadStudents();
+            } catch (error) {
+                console.error('更新學生狀態錯誤:', error);
+                alert('更新狀態失敗');
+            }
+        }
+
+        // 刪除學生
+        // 確認刪除學生（優化的確認對話框）
+        function confirmDeleteStudent(studentId, studentName) {
+            const confirmDelete = confirm(
+                `⚠️ 危險操作確認\n\n` +
+                `您即將刪除學生：${studentName}\n` +
+                `學生ID：${studentId}\n\n` +
+                `此操作將會：\n` +
+                `• 刪除學生的 Firebase 帳號\n` +
+                `• 刪除所有相關的追蹤資料\n` +
+                `• 無法復原\n\n` +
+                `確定要繼續嗎？`
+            );
+            
+            if (confirmDelete) {
+                deleteStudent(studentId);
+            }
+        }
+
+        async function deleteStudent(studentId) {
+            const student = students.find(s => s.id === studentId);
+            if (!student) return;
+
+            // 顯示載入狀態
+            const deleteBtn = document.querySelector(`button[onclick*="${studentId}"][onclick*="confirmDeleteStudent"]`);
+            if (deleteBtn) {
+                deleteBtn.disabled = true;
+                deleteBtn.innerHTML = '<span>🔄</span><span>刪除中...</span>';
             }
 
             try {
-                await window.firebaseService.db.collection('students').doc(studentId).update({
-                    status: newStatus,
-                    lastStatusUpdate: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                // 刪除學生記錄、使用者帳號和所有相關資料
+                const batch = window.firebaseService.db.batch();
+                
+                // 刪除 students 集合中的記錄
+                batch.delete(window.firebaseService.db.collection('students').doc(studentId));
+                
+                // 刪除 users 集合中的記錄
+                batch.delete(window.firebaseService.db.collection('users').doc(studentId));
+                
+                // 刪除 userData 集合中的記錄
+                batch.delete(window.firebaseService.db.collection('userData').doc(studentId));
+                
+                // 刪除 trackingData 集合中的記錄
+                batch.delete(window.firebaseService.db.collection('trackingData').doc(studentId));
 
-                alert(`✅ 學生帳號已${action}`);
-                loadExistingStudents();
+                await batch.commit();
+                
+                showSuccessMessage(`學生 ${student.name} 已成功刪除！\n\n✅ 帳號已刪除\n✅ 所有相關資料已清除`);
+                await loadStudents();
+                
             } catch (error) {
-                console.error('更新學生狀態錯誤:', error);
-                alert('❌ 更新失敗：系統錯誤');
+                console.error('刪除學生錯誤:', error);
+                
+                // 顯示詳細錯誤訊息
+                const errorMsg = error.code === 'permission-denied' 
+                    ? '權限不足，無法刪除學生資料' 
+                    : `刪除失敗：${error.message}`;
+                    
+                alert(`❌ ${errorMsg}\n\n請檢查：\n• 網路連接是否正常\n• 是否有足夠權限\n• 稍後再試`);
+                
+                // 恢復按鈕狀態
+                if (deleteBtn) {
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = '<span>🗑️</span><span>刪除</span>';
+                }
             }
         }
 
-        // 重新載入學生列表
-        document.getElementById('refreshStudents').addEventListener('click', loadExistingStudents);
-
-        // 導航功能
-        function goToImport() {
-            window.location.href = 'import.html';
-        }
-
-        function goToAdminManagement() {
-            window.location.href = 'admin-management.html';
-        }
-
+        // 導航函數
         function goToTracking() {
             window.location.href = 'tracking.html';
         }
 
-        async function logout() {
-            try {
-                await window.firebaseService.signOut();
+        function goToImport() {
+            window.location.href = 'import.html';
+        }
+
+        function logout() {
+            window.firebaseService.signOut().then(() => {
                 sessionStorage.clear();
                 window.location.href = 'login.html';
-            } catch (error) {
-                console.error('登出錯誤:', error);
-                alert('登出失敗，請稍後再試');
-            }
+            });
         }
     </script>
 </body>

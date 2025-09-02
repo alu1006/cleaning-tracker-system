@@ -27,21 +27,13 @@
                 <button type="submit" class="login-btn">登入</button>
             </form>
             <div class="auth-options">
-                <button type="button" id="registerBtn" class="register-btn">註冊新帳號</button>
-                <div class="divider">或</div>
+                <button type="button" id="googleLoginBtn" class="google-btn">🔍 Google 登入</button>
             </div>
             
             <div class="user-info">
                 <h3>🔥 Firebase 雲端帳號</h3>
-                <p>📧 請使用電子信箱和密碼登入</p>
-                <p>🆕 首次使用請點擊「註冊新帳號」</p>
-                <div id="admin-info" style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 4px; border-left: 3px solid #ffc107;">
-                    <h4>🔑 管理員登入</h4>
-                    <p><strong>系統內建管理員帳號：</strong></p>
-                    <p>📧 Email: <code>admin@cleaning-system.internal</code></p>
-                    <p>🔒 Password: <code>CleanAdmin2025!</code></p>
-                    <small style="color: #856404;">⚠️ 管理員帳號不開放註冊，僅限內建帳號使用</small>
-                </div>
+                <p>🔍 推薦使用 Google 帳號快速登入</p>
+                <p>📧 或使用電子信箱和密碼登入</p>
             </div>
         </div>
     </div>
@@ -50,24 +42,52 @@
     <script src="firebase-simple-public.js"></script>
     
     <script>
-        let isRegistering = false;
         
-        // 切換註冊/登入模式
-        document.getElementById('registerBtn').addEventListener('click', function() {
-            isRegistering = !isRegistering;
-            const btn = document.getElementById('registerBtn');
-            const submitBtn = document.querySelector('.login-btn');
+        // Google 登入處理
+        document.getElementById('googleLoginBtn').addEventListener('click', async function() {
+            const btn = document.getElementById('googleLoginBtn');
+            const originalText = btn.textContent;
+            btn.textContent = '處理中...';
+            btn.disabled = true;
             
-            if (isRegistering) {
-                btn.textContent = '返回登入';
-                btn.classList.add('active');
-                submitBtn.textContent = '註冊帳號';
-                document.querySelector('h1').innerHTML = '🧹 註冊新帳號';
-            } else {
-                btn.textContent = '註冊新帳號';
-                btn.classList.remove('active');
-                submitBtn.textContent = '登入';
-                document.querySelector('h1').innerHTML = '🧹 打掃追蹤系統';
+            try {
+                const result = await window.firebaseService.signInWithGoogle();
+                
+                if (result.success) {
+                    console.log('Google 登入成功:', result.user.email);
+                    
+                    // 儲存使用者資訊到 sessionStorage
+                    sessionStorage.setItem('currentUser', result.user.uid);
+                    sessionStorage.setItem('userEmail', result.user.email);
+                    sessionStorage.setItem('userRole', 'teacher'); // Google 用戶預設為 teacher
+                    sessionStorage.setItem('userName', result.user.displayName || result.user.email);
+                    
+                    // 根據使用者資料決定跳轉
+                    setTimeout(async () => {
+                        try {
+                            const userDataResult = await firebase.firestore().collection('userData').doc(result.user.uid).get();
+                            
+                            if (userDataResult.exists && userDataResult.data()?.cleaningTasks?.length > 0 && userDataResult.data()?.assignments) {
+                                console.log('Google 用戶有完整資料，跳轉到追蹤頁面');
+                                window.location.href = 'tracking.html';
+                            } else {
+                                console.log('Google 用戶無完整資料，跳轉到匯入頁面');
+                                window.location.href = 'import.html';
+                            }
+                        } catch (error) {
+                            console.warn('無法檢查現有資料:', error);
+                            window.location.href = 'import.html';
+                        }
+                    }, 300);
+                } else {
+                    alert('Google 登入失敗：' + result.error);
+                }
+            } catch (error) {
+                console.error('Google 登入錯誤:', error);
+                alert('Google 登入發生錯誤，請稍後再試');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         });
         
@@ -87,19 +107,8 @@
             try {
                 let result;
                 
-                if (isRegistering) {
-                    // 註冊新使用者 - 只允許註冊一般使用者，不允許註冊管理員
-                    const role = 'user';
-                    const name = '使用者';
-                    
-                    result = await window.firebaseService.createUser(email, password, {
-                        role: role,
-                        name: name
-                    });
-                } else {
-                    // 登入現有使用者
-                    result = await window.firebaseService.signIn(email, password);
-                }
+                // 登入使用者
+                result = await window.firebaseService.signIn(email, password);
                 
                 if (result.success) {
                     try {
@@ -111,11 +120,37 @@
                             const userDoc = await firebase.firestore().collection('users').doc(result.user.uid).get();
                             userData = userDoc.data();
                             
+                            console.log('🔍 登入時檢查使用者資料:', {
+                                uid: result.user.uid,
+                                email: result.user.email,
+                                userDocExists: userDoc.exists,
+                                userData: userData,
+                                userRole: userData?.role
+                            });
+                            
                             // 如果使用者資料不存在，建立預設資料
                             if (!userData) {
-                                console.log('建立新使用者資料...');
-                                const role = result.user.email.includes('admin') ? 'admin' : 'user';
-                                const name = result.user.email.includes('admin') ? '管理員' : '使用者';
+                                console.log('⚠️ 沒有找到 users 記錄，建立新使用者資料...');
+                                
+                                // 檢查是否為學生：先查詢 students 集合
+                                let role = 'teacher'; // 預設為教師
+                                let name = '使用者';
+                                
+                                {
+                                    // 檢查是否在 students 集合中
+                                    try {
+                                        const studentDoc = await firebase.firestore().collection('students').doc(result.user.uid).get();
+                                        if (studentDoc.exists) {
+                                            role = 'student';
+                                            name = studentDoc.data().name || '學生';
+                                            console.log('✅ 檢測到學生記錄，角色設為 student');
+                                        } else {
+                                            console.log('⚠️ 未找到學生記錄，角色設為 teacher');
+                                        }
+                                    } catch (error) {
+                                        console.warn('檢查學生記錄錯誤，使用預設角色 teacher:', error);
+                                    }
+                                }
                                 
                                 userData = {
                                     email: result.user.email,
@@ -125,15 +160,15 @@
                                 };
                                 
                                 await firebase.firestore().collection('users').doc(result.user.uid).set(userData);
-                                console.log('使用者資料建立完成');
+                                console.log('使用者資料建立完成，角色:', userData.role);
                             }
                         } catch (firestoreError) {
                             console.warn('Firestore 存取錯誤，使用預設資料:', firestoreError);
                             // 如果 Firestore 有問題，使用預設資料
                             userData = {
                                 email: result.user.email,
-                                role: result.user.email.includes('admin') ? 'admin' : 'user',
-                                name: result.user.email.includes('admin') ? '管理員' : '使用者'
+                                role: 'user',
+                                name: '使用者'
                             };
                         }
                         
@@ -150,10 +185,46 @@
                             try {
                                 const userRole = userData.role || 'user';
                                 
-                                if (userRole === 'admin') {
-                                    // 管理員直接跳轉到追蹤頁面管理所有使用者
-                                    console.log('管理員登入，跳轉到追蹤頁面');
-                                    window.location.href = 'tracking.html';
+                                if (userRole === 'teacher') {
+                                    // 教師跳轉到學生管理頁面
+                                    console.log('教師登入，跳轉到學生管理頁面');
+                                    window.location.href = 'student-management.html';
+                                } else if (userRole === 'student') {
+                                    // 學生用戶：檢查是否有關聯教師的資料
+                                    console.log('學生登入，檢查教師資料...');
+                                    
+                                    try {
+                                        // 使用新的 getTeacherDataForStudent 方法
+                                        const teacherDataResult = await window.firebaseService.getTeacherDataForStudent(result.user.uid);
+                                        
+                                        if (teacherDataResult.success) {
+                                            console.log('找到關聯教師:', teacherDataResult.teacherId);
+                                            console.log('學生資訊:', teacherDataResult.studentInfo);
+                                            
+                                            // 儲存教師資訊和學生資訊到 sessionStorage 供其他頁面使用
+                                            sessionStorage.setItem('teacherId', teacherDataResult.teacherId);
+                                            sessionStorage.setItem('teacherName', teacherDataResult.teacherInfo?.name || '教師');
+                                            sessionStorage.setItem('isStudentMode', 'true');
+                                            sessionStorage.setItem('studentId', result.user.uid);
+                                            sessionStorage.setItem('studentName', teacherDataResult.studentInfo?.name || '學生');
+                                            sessionStorage.setItem('studentNumber', teacherDataResult.studentInfo?.studentNumber || '');
+                                            
+                                            // 學生總是跳轉到追蹤頁面，不管教師是否有資料
+                                            console.log('學生登入成功，跳轉到追蹤頁面（學生模式）');
+                                            window.location.href = 'tracking.html';
+                                        } else {
+                                            console.log('學生沒有關聯教師，錯誤:', teacherDataResult.error);
+                                            alert('學生帳號設定錯誤：' + teacherDataResult.error + '\n請聯絡教師確認帳號設定。');
+                                            // 清除錯誤的登入狀態
+                                            await window.firebaseService.signOut();
+                                            sessionStorage.clear();
+                                            return;
+                                        }
+                                    } catch (error) {
+                                        console.warn('檢查學生教師資料錯誤:', error);
+                                        alert('檢查教師資料時發生錯誤，請稍後重試。');
+                                        window.location.href = 'import.html';
+                                    }
                                 } else {
                                     // 一般使用者檢查是否已有資料
                                     const userDataResult = await firebase.firestore().collection('userData').doc(result.user.uid).get();
@@ -168,9 +239,9 @@
                                 }
                             } catch (error) {
                                 console.warn('無法檢查現有資料:', error);
-                                // 預設行為：管理員到追蹤，其他到匯入
-                                if (userData.role === 'admin') {
-                                    window.location.href = 'tracking.html';
+                                // 預設行為：教師到學生管理，其他到匯入
+                                if (userData.role === 'teacher') {
+                                    window.location.href = 'student-management.html';
                                 } else {
                                     window.location.href = 'import.html';
                                 }
@@ -205,14 +276,60 @@
                     if (window.firebaseService.auth.currentUser) {
                         // 使用者已登入，根據角色決定跳轉位置
                         try {
-                            // 先取得使用者角色
+                            // 先取得使用者角色，如果沒有則檢查是否為學生
                             const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
-                            const userData = userDoc.data();
-                            const userRole = userData?.role || 'user';
+                            let userData = userDoc.data();
+                            let userRole = userData?.role;
                             
-                            if (userRole === 'admin') {
-                                console.log('管理員已登入，跳轉到追蹤頁面');
-                                window.location.href = 'tracking.html';
+                            // 如果沒有角色資訊，檢查是否為學生
+                            if (!userRole) {
+                                try {
+                                    const studentDoc = await firebase.firestore().collection('students').doc(user.uid).get();
+                                    if (studentDoc.exists) {
+                                        userRole = 'student';
+                                        console.log('✅ 從 students 集合檢測到學生身份');
+                                    } else {
+                                        // 預設為教師
+                                        userRole = 'teacher';
+                                        console.log('⚠️ 未找到使用者記錄，根據 email 設定角色:', userRole);
+                                    }
+                                } catch (error) {
+                                    console.warn('檢查學生記錄錯誤，使用預設角色:', error);
+                                    userRole = 'teacher';
+                                }
+                            }
+                            
+                            if (userRole === 'teacher') {
+                                console.log('教師已登入，跳轉到學生管理頁面');
+                                window.location.href = 'student-management.html';
+                            } else if (userRole === 'student') {
+                                // 學生用戶：檢查是否有關聯教師的資料
+                                console.log('學生已登入，檢查教師資料...');
+                                
+                                try {
+                                    // 使用新的 getTeacherDataForStudent 方法
+                                    const teacherDataResult = await window.firebaseService.getTeacherDataForStudent(user.uid);
+                                    
+                                    if (teacherDataResult.success) {
+                                        // 儲存教師資訊和學生資訊到 sessionStorage
+                                        sessionStorage.setItem('teacherId', teacherDataResult.teacherId);
+                                        sessionStorage.setItem('teacherName', teacherDataResult.teacherInfo?.name || '教師');
+                                        sessionStorage.setItem('isStudentMode', 'true');
+                                        sessionStorage.setItem('studentId', user.uid);
+                                        sessionStorage.setItem('studentName', teacherDataResult.studentInfo?.name || '學生');
+                                        sessionStorage.setItem('studentNumber', teacherDataResult.studentInfo?.studentNumber || '');
+                                        
+                                        // 學生總是跳轉到追蹤頁面
+                                        console.log('學生已登入，跳轉到追蹤頁面（學生模式）');
+                                        window.location.href = 'tracking.html';
+                                    } else {
+                                        console.log('學生帳號設定錯誤:', teacherDataResult.error);
+                                        window.location.href = 'import.html';
+                                    }
+                                } catch (error) {
+                                    console.warn('檢查學生教師資料錯誤:', error);
+                                    window.location.href = 'import.html';
+                                }
                             } else {
                                 // 一般使用者檢查是否有完整資料
                                 const userDataResult = await firebase.firestore().collection('userData').doc(user.uid).get();

@@ -26,6 +26,15 @@
     <div class="container">
         <div class="tracking-header">
             <h2>📊 打掃追蹤表</h2>
+            <div id="dataSourceInfo" class="data-source-info" style="display: none;">
+                <div class="source-badge">
+                    <span class="source-icon">🎓</span>
+                    <div class="source-text">
+                        <strong>查看教師資料</strong>
+                        <small id="teacherNameDisplay"></small>
+                    </div>
+                </div>
+            </div>
             <div class="controls">
                 <button id="prevWeek" class="control-btn">◀ 上週</button>
                 <span id="currentWeek" class="week-display"></span>
@@ -44,6 +53,16 @@
                 <option value="">載入中...</option>
             </select>
             <div class="user-info-display" id="selectedUserInfo"></div>
+        </div>
+        
+        <div class="student-mode-banner" id="studentModeBanner" style="display: none;">
+            <div class="banner-content">
+                <span class="banner-icon">🛡️</span>
+                <div class="banner-text">
+                    <strong>衛生股長模式</strong> - 協助老師檢查打掃狀況
+                    <br><small>你可以標記缺點 😈，但只有老師能解除缺點或給予優點 🏅</small>
+                </div>
+            </div>
         </div>
 
         <div id="trackingTable" class="tracking-table-container">
@@ -86,24 +105,35 @@
                 const userDoc = await window.firebaseService.db.collection('users').doc(currentUser.uid).get();
                 const userData = userDoc.data();
                 
-                userName = userData?.name || currentUser.email;
+                userName = userData?.name || currentUser.displayName || currentUser.email;
                 userRole = userData?.role || 'user';
                 
-                document.getElementById('userInfo').textContent = `${userName} (${userRole === 'admin' ? '管理員' : '使用者'})`;
+                // 更新使用者資訊顯示，包含頭像（如果有的話）
+                const userInfoElement = document.getElementById('userInfo');
+                const photoURL = currentUser.photoURL || userData?.photoURL;
                 
-                // 如果是管理員，添加管理面板按鈕並載入所有使用者
-                if (userRole === 'admin') {
-                    // 添加管理面板按鈕
-                    const adminBtn = document.createElement('button');
-                    adminBtn.textContent = '🔑 管理面板';
-                    adminBtn.className = 'secondary-btn';
-                    adminBtn.onclick = () => window.location.href = 'admin-panel.html';
+                if (photoURL) {
+                    userInfoElement.innerHTML = `
+                        <img src="${photoURL}" alt="User Avatar" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 8px; vertical-align: middle;">
+                        ${userName} (${userRole === 'teacher' ? '教師' : '學生'})
+                    `;
+                } else {
+                    userInfoElement.textContent = `${userName} (${userRole === 'teacher' ? '教師' : '學生'})`;
+                }
+                
+                // 根據角色添加對應按鈕
+                const navUser = document.querySelector('.nav-user');
+                const importBtn = navUser.querySelector('button');
+                
+                if (userRole === 'teacher') {
+                    // 教師：添加學生管理按鈕並載入學生資料
+                    const studentMgmtBtn = document.createElement('button');
+                    studentMgmtBtn.textContent = '👥 學生管理';
+                    studentMgmtBtn.className = 'secondary-btn';
+                    studentMgmtBtn.onclick = () => window.location.href = 'student-management.html';
+                    navUser.insertBefore(studentMgmtBtn, importBtn);
                     
-                    const navUser = document.querySelector('.nav-user');
-                    const importBtn = navUser.querySelector('button');
-                    navUser.insertBefore(adminBtn, importBtn);
-                    
-                    await loadAllUsers();
+                    // 教師模式：直接使用自己的資料，不需要載入其他使用者
                 }
                 
                 // 初始化頁面
@@ -130,26 +160,79 @@
             }
         }
         
+        // 載入教師的學生（教師功能）
+        async function loadTeacherStudents() {
+            try {
+                // 載入屬於此教師的學生
+                const studentsQuery = window.firebaseService.db.collection('students')
+                    .where('teacherId', '==', currentUser.uid)
+                    .where('status', '==', 'active');
+                
+                const studentsSnapshot = await studentsQuery.get();
+                
+                // 清空 allUsers，只包含這個教師的學生
+                allUsers = {};
+                
+                // 載入每個學生的完整使用者資料
+                const promises = [];
+                studentsSnapshot.forEach(doc => {
+                    const student = { id: doc.id, ...doc.data() };
+                    promises.push(
+                        window.firebaseService.db.collection('users').doc(student.id).get()
+                        .then(userDoc => {
+                            if (userDoc.exists) {
+                                allUsers[student.id] = { 
+                                    ...userDoc.data(), 
+                                    id: student.id,
+                                    studentNumber: student.studentNumber 
+                                };
+                            }
+                        })
+                    );
+                });
+                
+                await Promise.all(promises);
+                console.log('載入教師學生數量:', Object.keys(allUsers).length);
+                
+                // 更新使用者選擇器
+                updateUserSelector();
+            } catch (error) {
+                console.error('載入教師學生錯誤:', error);
+            }
+        }
+        
         // 更新使用者選擇器
         function updateUserSelector() {
-            if (userRole !== 'admin') return;
+            if (userRole !== 'teacher') return;
             
             const selector = document.getElementById('selectedUser');
             selector.innerHTML = '';
             
-            // 添加所有使用者（包含管理員自己）
+            // 添加所有使用者
             Object.entries(allUsers).forEach(([userId, user]) => {
                 const option = document.createElement('option');
                 option.value = userId;
-                const roleText = user.role === 'admin' ? ' (管理員)' : ' (使用者)';
-                option.textContent = `${user.name || user.email}${roleText}`;
+                
+                let roleText = '';
+                if (user.role === 'teacher') roleText = ' (教師)';
+                else if (user.role === 'student') roleText = ' (學生)';
+                else roleText = ' (使用者)';
+                
+                // 顯示學號（如果有）
+                const studentNumber = user.studentNumber ? ` ${user.studentNumber}` : '';
+                option.textContent = `${user.name || user.email}${studentNumber}${roleText}`;
                 selector.appendChild(option);
             });
             
-            // 預設選擇第一個有資料的使用者，如果沒有就選第一個
+            // 預設選擇第一個使用者
             let defaultUserId = null;
             for (const [userId, user] of Object.entries(allUsers)) {
-                if (user.role !== 'admin') { // 優先選擇非管理員使用者
+                if (userRole === 'admin' && user.role !== 'admin') { 
+                    // 管理員優先選擇非管理員使用者
+                    defaultUserId = userId;
+                    break;
+                } else if (userRole === 'teacher') { 
+                    // 教師選擇第一個學生
                     defaultUserId = userId;
                     break;
                 }
@@ -188,16 +271,56 @@
             `;
         }
 
+        // 即時監聽器變數
+        let unsubscribeTeacherData = null;
+        let unsubscribeTrackingData = null;
+        
         // 初始化頁面
         async function initializePage() {
-            // 設定預設選擇的使用者
-            selectedUser = currentUser?.uid;
+            // 檢查是否為學生模式
+            const isStudentMode = sessionStorage.getItem('isStudentMode') === 'true';
             
-            // 如果是管理員，顯示使用者選擇器
-            if (userRole === 'admin') {
+            console.log('🔄 初始化頁面:', {
+                userRole,
+                isStudentMode,
+                currentUserUid: currentUser?.uid
+            });
+            
+            if (userRole === 'student' && isStudentMode) {
+                // 學生模式：隱藏用戶選擇器和修改分配按鈕
+                console.log('🎓 學生模式：隱藏用戶選擇器和修改分配按鈕');
+                document.getElementById('userSelector').style.display = 'none';
+                // 隱藏修改分配按鈕
+                const importButtons = document.querySelectorAll('button[onclick="goToImport()"]');
+                importButtons.forEach(btn => btn.style.display = 'none');
+                selectedUser = currentUser?.uid;
+                
+                // 顯示學生模式提示
+                const userSelectorDiv = document.getElementById('userSelector');
+                const studentNotice = document.createElement('div');
+                studentNotice.className = 'student-notice';
+                studentNotice.innerHTML = `
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #2196f3;">
+                        <strong>🎓 學生模式</strong><br>
+                        <small>顯示您的個人打掃任務和記錄</small>
+                    </div>
+                `;
+                userSelectorDiv.parentNode.insertBefore(studentNotice, userSelectorDiv);
+                
+            } else if (userRole === 'admin') {
+                // 管理員：顯示用戶選擇器
+                console.log('👨‍💼 管理員模式：顯示用戶選擇器');
                 document.getElementById('userSelector').style.display = 'block';
-                // 管理員預設查看第一個有資料的使用者
+                selectedUser = currentUser?.uid;
                 updateUserSelector();
+            } else if (userRole === 'teacher') {
+                // 教師：只查看自己的資料，不顯示用戶選擇器
+                console.log('👨‍🏫 教師模式：查看自己的匯入資料');
+                document.getElementById('userSelector').style.display = 'none';
+                selectedUser = currentUser?.uid;
+            } else {
+                // 其他情況：設定預設選擇的使用者
+                selectedUser = currentUser?.uid;
             }
             
             console.log('初始化頁面，選擇的使用者:', selectedUser);
@@ -205,7 +328,97 @@
             // 初始化週次顯示和表格
             updateWeekDisplay();
             await generateTrackingTable();
+            
+            // 設定即時監聽器
+            setupRealtimeListeners();
         }
+        
+        // 設定即時監聽器
+        function setupRealtimeListeners() {
+            // 清理舊的監聽器
+            if (unsubscribeTeacherData) {
+                unsubscribeTeacherData();
+                unsubscribeTeacherData = null;
+            }
+            if (unsubscribeTrackingData) {
+                unsubscribeTrackingData();
+                unsubscribeTrackingData = null;
+            }
+            
+            if (!currentUser) return;
+            
+            const isStudentMode = sessionStorage.getItem('isStudentMode') === 'true';
+            
+            if (userRole === 'student' && isStudentMode) {
+                // 學生模式：監聽教師資料變化
+                console.log('🔔 設定學生模式即時監聽器');
+                
+                window.firebaseService.onTeacherDataChanged(currentUser.uid, (update) => {
+                    console.log('📡 收到教師資料更新:', update.type);
+                    
+                    if (update.type === 'userData' && update.data) {
+                        // 更新本地的 userData
+                        const oldTaskCount = userData?.cleaningTasks?.length || 0;
+                        const newTaskCount = update.data.cleaningTasks?.length || 0;
+                        
+                        userData = {
+                            ...update.data,
+                            isStudentMode: true,
+                            studentId: currentUser.uid,
+                            teacherId: update.teacherId,
+                            teacherInfo: userData?.teacherInfo,
+                            studentInfo: userData?.studentInfo
+                        };
+                        
+                        // 如果打掃任務有變化，重新生成表格
+                        if (oldTaskCount !== newTaskCount || 
+                            JSON.stringify(userData.assignments) !== JSON.stringify(update.data.assignments)) {
+                            console.log('🔄 教師資料已更新，重新生成表格');
+                            generateTrackingTable();
+                        }
+                    }
+                });
+                
+                // 監聽教師的追蹤資料變化（學生模式下也要同步教師的追蹤）
+                const teacherId = sessionStorage.getItem('teacherId');
+                if (teacherId) {
+                    unsubscribeTrackingData = window.firebaseService.onTrackingDataChanged(teacherId, (doc) => {
+                        if (doc.exists) {
+                            trackingData = doc.data();
+                            console.log('📡 教師追蹤資料已更新（學生模式）');
+                            // 更新統計和顯示
+                            updateStatistics();
+                        }
+                    });
+                }
+                
+            } else {
+                // 一般模式：監聽選中使用者的資料
+                const targetUserId = selectedUser || currentUser.uid;
+                
+                unsubscribeTeacherData = window.firebaseService.onUserDataChanged(targetUserId, (doc) => {
+                    if (doc.exists) {
+                        userData = doc.data();
+                        console.log('📡 使用者資料已更新');
+                        generateTrackingTable();
+                    }
+                });
+                
+                unsubscribeTrackingData = window.firebaseService.onTrackingDataChanged(targetUserId, (doc) => {
+                    if (doc.exists) {
+                        trackingData = doc.data();
+                        console.log('📡 追蹤資料已更新');
+                        updateStatistics();
+                    }
+                });
+            }
+        }
+        
+        // 頁面卸載時清理監聽器
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribeTeacherData) unsubscribeTeacherData();
+            if (unsubscribeTrackingData) unsubscribeTrackingData();
+        });
 
         let currentWeek = new Date();
         let selectedUser = null; // 將在使用者登入後設定
@@ -280,6 +493,20 @@
             if (!targetUserId) return false;
             
             try {
+                // 檢查是否為學生模式（從 sessionStorage）
+                const isStudentMode = sessionStorage.getItem('isStudentMode') === 'true';
+                const teacherId = sessionStorage.getItem('teacherId');
+                
+                if (isStudentMode && userRole === 'student' && currentUser?.uid === targetUserId) {
+                    // 學生模式：載入教師的資料
+                    console.log('🎓 學生模式：載入教師資料');
+                    return await loadStudentTeacherData(targetUserId);
+                } else if (await isStudent(targetUserId)) {
+                    // 教師查看學生的情況
+                    return await loadStudentTeacherData(targetUserId);
+                }
+                
+                // 一般情況：載入指定使用者的資料
                 const [userDataResult, trackingResult] = await Promise.all([
                     window.firebaseService.getUserData(targetUserId),
                     window.firebaseService.getTrackingData(targetUserId)
@@ -298,6 +525,89 @@
                 console.error('載入使用者資料錯誤:', error);
             }
             return false;
+        }
+        
+        // 檢查用戶是否為學生
+        async function isStudent(userId) {
+            try {
+                const userDoc = await window.firebaseService.db.collection('users').doc(userId).get();
+                return userDoc.exists && userDoc.data()?.role === 'student';
+            } catch (error) {
+                console.error('檢查用戶角色錯誤:', error);
+                return false;
+            }
+        }
+        
+        // 檢查是否為教師的學生
+        async function isTeacherStudent(teacherId, studentId) {
+            try {
+                const studentDoc = await window.firebaseService.db.collection('students').doc(studentId).get();
+                return studentDoc.exists && studentDoc.data()?.teacherId === teacherId;
+            } catch (error) {
+                console.error('檢查師生關係錯誤:', error);
+                return false;
+            }
+        }
+        
+        // 載入學生對應教師的資料
+        async function loadStudentTeacherData(studentId) {
+            try {
+                console.log('載入學生教師資料，學生ID:', studentId);
+                
+                // 使用新的 getTeacherDataForStudent 方法
+                const teacherDataResult = await window.firebaseService.getTeacherDataForStudent(studentId);
+                
+                if (!teacherDataResult.success) {
+                    console.log('無法載入教師資料:', teacherDataResult.error);
+                    return false;
+                }
+                
+                const { teacherId, teacherInfo, userData: teacherUserData, trackingData: teacherTrackingData, studentInfo } = teacherDataResult;
+                
+                // 載入學生自己的追蹤記錄
+                const studentTrackingResult = await window.firebaseService.getTrackingData(studentId);
+                
+                // 檢查教師是否有資料
+                if (!teacherUserData || !teacherUserData.cleaningTasks || !teacherUserData.assignments) {
+                    console.log('❌ 教師沒有清掃資料');
+                    console.log('teacherUserData:', teacherUserData);
+                    userData = {
+                        cleaningTasks: [],
+                        assignments: {},
+                        isStudentMode: true,
+                        studentId: studentId,
+                        studentInfo: studentInfo,
+                        teacherId: teacherId,
+                        teacherInfo: teacherInfo,
+                        error: '教師尚未匯入清掃資料'
+                    };
+                    trackingData = {};
+                    return false;
+                }
+                
+                // 設置全域變數
+                userData = teacherUserData; // 使用教師的 cleaningTasks 和 assignments
+                trackingData = teacherTrackingData || {}; // 使用教師的追蹤資料，確保同步
+                
+                // 標記這是學生模式，並保存相關資訊
+                userData.isStudentMode = true;
+                userData.studentId = studentId;
+                userData.studentData = studentInfo;  // 修正：使用 studentData 而非 studentInfo
+                userData.teacherId = teacherId;
+                userData.teacherInfo = teacherInfo;
+                
+                console.log('學生教師資料載入完成');
+                console.log('教師:', teacherInfo?.name || teacherId);
+                console.log('學生:', studentInfo?.name || studentId);
+                console.log('打掃任務數量:', userData.cleaningTasks?.length || 0);
+                console.log('分配數量:', Object.keys(userData.assignments || {}).length);
+                
+                return true;
+                
+            } catch (error) {
+                console.error('載入學生教師資料錯誤:', error);
+                return false;
+            }
         }
 
         async function generateTrackingTable() {
@@ -321,15 +631,44 @@
                 return;
             }
             
+            // 顯示學生模式相關資訊
+            if (userData.isStudentMode) {
+                document.getElementById('studentModeBanner').style.display = 'block';
+                console.log('🛡️ 衛生股長模式已啟用，可以標記缺點但不能解除');
+                
+                // 顯示資料來源資訊
+                const dataSourceInfo = document.getElementById('dataSourceInfo');
+                const teacherNameDisplay = document.getElementById('teacherNameDisplay');
+                
+                if (userData.teacherInfo?.name) {
+                    teacherNameDisplay.textContent = `教師：${userData.teacherInfo.name}`;
+                } else {
+                    teacherNameDisplay.textContent = '教師資料';
+                }
+                
+                dataSourceInfo.style.display = 'block';
+            }
+            
             // 檢查必要資料
             if (!userData.cleaningTasks || !userData.assignments) {
                 console.log('❌ 缺少必要資料');
                 console.log('cleaningTasks:', userData.cleaningTasks?.length);
                 console.log('assignments:', Object.keys(userData.assignments || {}).length);
+                console.log('isStudentMode:', userData.isStudentMode);
+                console.log('userData:', userData);
+                
+                let errorMessage = '📝 資料不完整，請重新匯入';
+                if (userData.isStudentMode && userData.error) {
+                    errorMessage = `📝 ${userData.error}`;
+                } else if (userData.isStudentMode) {
+                    errorMessage = '📝 您的教師尚未匯入清掃資料，請聯絡教師先匯入資料';
+                }
+                
                 document.getElementById('trackingTable').innerHTML = `
                     <div class="no-data">
-                        <p>📝 資料不完整，請重新匯入</p>
-                        <button onclick="goToImport()" class="primary-btn">前往匯入資料</button>
+                        <p>${errorMessage}</p>
+                        ${userData.isStudentMode ? '' : '<button onclick="goToImport()" class="primary-btn">前往匯入資料</button>'}
+                        ${userData.isStudentMode ? '<p><small>如有問題請聯絡您的教師</small></p>' : ''}
                     </div>
                 `;
                 return;
@@ -355,13 +694,27 @@
             tableHTML += '</tr></thead><tbody>';
 
             // 生成任務行
+            console.log('開始生成任務行，總任務數:', userData.cleaningTasks.length);
             userData.cleaningTasks.forEach((task, taskIndex) => {
                 const taskName = task['完整事項'] || task['事項'] || '未知事項';
                 const assignedStudents = userData.assignments[taskIndex] || [];
                 
-                if (assignedStudents.length === 0) return;
+                console.log(`任務 ${taskIndex}: ${taskName}, 分配學生數: ${assignedStudents.length}`);
+                
+                if (assignedStudents.length === 0) {
+                    console.log(`跳過任務 ${taskIndex}，無分配學生`);
+                    return;
+                }
 
-                assignedStudents.forEach(studentKey => {
+                // 衛生股長模式：顯示所有任務和所有負責的學生
+                let filteredStudents = assignedStudents;
+                if (userData.isStudentMode) {
+                    // 衛生股長模式：顯示所有任務和所有學生，不做過濾
+                    filteredStudents = assignedStudents;
+                    console.log('🛡️ 衛生股長模式：顯示所有學生', filteredStudents);
+                }
+
+                filteredStudents.forEach(studentKey => {
                     // 將 uniqueKey 轉換回顯示格式
                     const parts = studentKey.split('_');
                     const displayName = parts.length >= 2 ? `${parts[0]} ${parts.slice(1).join('_')}` : studentKey;
@@ -406,8 +759,17 @@
             console.log('選擇的使用者:', selectedUser);
             console.log('當前使用者 UID:', currentUser?.uid);
             
-            // 管理員可以修改所有人的資料，一般使用者只能修改自己的資料
-            const canEdit = userRole === 'admin' || selectedUser === currentUser?.uid;
+            // 管理員可以修改所有人的資料，教師可以修改學生資料，學生只能修改自己的資料
+            let canEdit = false;
+            if (userRole === 'admin') {
+                canEdit = true; // 管理員可以編輯任何人
+            } else if (userRole === 'teacher') {
+                canEdit = selectedUser === currentUser?.uid || await isTeacherStudent(currentUser?.uid, selectedUser);
+            } else if (userData.isStudentMode) {
+                canEdit = true; // 學生可以編輯自己負責的任務（已在 trackingData 存儲中隔離）
+            } else {
+                canEdit = selectedUser === currentUser?.uid; // 一般用戶只能編輯自己的
+            }
             
             if (canEdit) {
                 const clickableCells = document.querySelectorAll('.tracking-cell.clickable');
@@ -448,20 +810,72 @@
             let currentStatus = trackingData[cellKey] || 'empty';
             let newStatus;
             
-            // 狀態循環：空白 → 🏅 → 😈 → 空白
-            switch (currentStatus) {
-                case 'empty':
-                    newStatus = 'merit';
-                    cell.innerHTML = '🏅';
-                    break;
-                case 'merit':
-                    newStatus = 'demerit';
-                    cell.innerHTML = '😈';
-                    break;
-                case 'demerit':
-                    newStatus = 'empty';
-                    cell.innerHTML = '';
-                    break;
+            // 根據使用者角色決定編輯邏輯
+            if (userData.isStudentMode) {
+                // 學生（衛生股長）模式：只能新增缺點，不能解除
+                switch (currentStatus) {
+                    case 'empty':
+                        newStatus = 'demerit';
+                        cell.innerHTML = '😈';
+                        console.log('衛生股長標記缺點');
+                        break;
+                    case 'merit':
+                        // 已有優點，衛生股長可以覆蓋成缺點
+                        newStatus = 'demerit';
+                        cell.innerHTML = '😈';
+                        console.log('衛生股長覆蓋優點為缺點');
+                        break;
+                    case 'demerit':
+                        // 已有缺點，衛生股長不能解除
+                        console.log('衛生股長無法解除缺點');
+                        
+                        // 給予視覺反饋
+                        cell.style.animation = 'shake 0.5s';
+                        setTimeout(() => {
+                            cell.style.animation = '';
+                        }, 500);
+                        
+                        // 顯示提示訊息
+                        const tooltip = document.createElement('div');
+                        tooltip.textContent = '只有老師能解除缺點';
+                        tooltip.style.cssText = `
+                            position: absolute;
+                            background: #dc3545;
+                            color: white;
+                            padding: 5px 10px;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            z-index: 1000;
+                            pointer-events: none;
+                        `;
+                        
+                        const rect = cell.getBoundingClientRect();
+                        tooltip.style.left = rect.left + 'px';
+                        tooltip.style.top = (rect.top - 30) + 'px';
+                        
+                        document.body.appendChild(tooltip);
+                        setTimeout(() => {
+                            document.body.removeChild(tooltip);
+                        }, 2000);
+                        
+                        return; // 不做任何改變
+                }
+            } else {
+                // 教師/管理員模式：完整循環 空白 → 🏅 → 😈 → 空白
+                switch (currentStatus) {
+                    case 'empty':
+                        newStatus = 'merit';
+                        cell.innerHTML = '🏅';
+                        break;
+                    case 'merit':
+                        newStatus = 'demerit';
+                        cell.innerHTML = '😈';
+                        break;
+                    case 'demerit':
+                        newStatus = 'empty';
+                        cell.innerHTML = '';
+                        break;
+                }
             }
             
             trackingData[cellKey] = newStatus;
@@ -546,11 +960,18 @@
         }
 
         async function saveTrackingData() {
-            const targetUserId = selectedUser || currentUser?.uid;
+            let targetUserId = selectedUser || currentUser?.uid;
+            
+            // 如果是學生模式，追蹤資料要存到教師的 ID 下以保持同步
+            if (userData.isStudentMode && userData.teacherId) {
+                targetUserId = userData.teacherId;
+            }
+            
             if (!targetUserId) return;
             
             try {
                 await window.firebaseService.saveTrackingData(targetUserId, trackingData);
+                console.log('追蹤資料已儲存到:', targetUserId);
             } catch (error) {
                 console.error('儲存追蹤資料錯誤:', error);
             }
