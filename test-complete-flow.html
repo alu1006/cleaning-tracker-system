@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>完整流程測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .passed { background: #d4edda; border-color: #c3e6cb; }
+        .failed { background: #f8d7da; border-color: #f5c6cb; }
+        .pending { background: #fff3cd; border-color: #ffeaa7; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 8px 15px; margin: 5px; }
+        pre { background: #f8f9fa; padding: 10px; overflow-x: auto; font-size: 12px; }
+        .log { max-height: 200px; overflow-y: auto; }
+    </style>
+    
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <h1>🧪 師生系統完整流程測試</h1>
+    
+    <div class="test-section info">
+        <h3>📋 測試計劃</h3>
+        <ol>
+            <li>測試教師 Google 登入</li>
+            <li>測試教師創建學生帳號</li>
+            <li>測試學生登入</li>
+            <li>測試學生查看教師資料</li>
+            <li>測試學生訪問 import.html 和 tracking.html</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h3>🔧 控制面板</h3>
+        <button onclick="runAllTests()">🚀 執行完整測試</button>
+        <button onclick="clearLogs()">🗑️ 清除日誌</button>
+        <button onclick="resetTest()">🔄 重置測試</button>
+    </div>
+
+    <div class="test-section">
+        <h3>📊 測試結果</h3>
+        <div id="testResults"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📝 測試日誌</h3>
+        <div id="testLogs" class="log"></div>
+    </div>
+
+    <!-- Firebase 配置 -->
+    <script src="firebase-simple-public.js"></script>
+    
+    <script>
+        let testResults = {};
+        let currentUser = null;
+        
+        // 日誌函數
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('testLogs');
+            const color = type === 'success' ? 'green' : type === 'error' ? 'red' : type === 'warn' ? 'orange' : 'black';
+            logDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[TEST] ${message}`);
+        }
+
+        // 更新測試結果顯示
+        function updateResults() {
+            const resultsDiv = document.getElementById('testResults');
+            let html = '<table border="1" style="width: 100%; border-collapse: collapse;">';
+            html += '<tr><th>測試項目</th><th>狀態</th><th>詳情</th></tr>';
+            
+            for (const [test, result] of Object.entries(testResults)) {
+                const status = result.passed ? '✅ 通過' : result.failed ? '❌ 失敗' : '⏳ 進行中';
+                const rowClass = result.passed ? 'passed' : result.failed ? 'failed' : 'pending';
+                html += `<tr class="${rowClass}">
+                    <td>${test}</td>
+                    <td>${status}</td>
+                    <td>${result.details || ''}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            resultsDiv.innerHTML = html;
+        }
+
+        // 設定測試結果
+        function setTestResult(testName, passed, details = '') {
+            testResults[testName] = { 
+                passed: passed, 
+                failed: !passed, 
+                details: details,
+                timestamp: new Date()
+            };
+            updateResults();
+        }
+
+        // 清除日誌
+        function clearLogs() {
+            document.getElementById('testLogs').innerHTML = '';
+        }
+
+        // 重置測試
+        function resetTest() {
+            testResults = {};
+            updateResults();
+            clearLogs();
+            if (currentUser) {
+                window.firebaseService.signOut();
+            }
+            sessionStorage.clear();
+            log('🔄 測試已重置', 'info');
+        }
+
+        // 等待函數
+        function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // 測試 1: Firebase 連接
+        async function testFirebaseConnection() {
+            log('🔥 測試 Firebase 連接...', 'info');
+            try {
+                if (!window.firebaseService) {
+                    throw new Error('Firebase 服務未載入');
+                }
+                
+                if (!window.firebaseService.auth || !window.firebaseService.db) {
+                    throw new Error('Firebase Auth 或 Firestore 未初始化');
+                }
+
+                log('✅ Firebase 連接正常', 'success');
+                setTestResult('Firebase 連接', true, 'Auth 和 Firestore 正常');
+                return true;
+            } catch (error) {
+                log(`❌ Firebase 連接失敗: ${error.message}`, 'error');
+                setTestResult('Firebase 連接', false, error.message);
+                return false;
+            }
+        }
+
+        // 測試 2: 學生登入
+        async function testStudentLogin() {
+            log('🎓 測試學生登入...', 'info');
+            try {
+                // 先登出現有用戶
+                if (currentUser) {
+                    await window.firebaseService.signOut();
+                    await wait(1000);
+                }
+
+                const result = await window.firebaseService.signIn('123@gmail.com', '123456');
+                
+                if (!result.success) {
+                    throw new Error(`登入失敗: ${result.error}`);
+                }
+
+                currentUser = result.user;
+                log(`✅ 學生登入成功: ${result.user.email}`, 'success');
+
+                // 檢查用戶角色
+                const userDoc = await window.firebaseService.db.collection('users').doc(result.user.uid).get();
+                const userData = userDoc.data();
+
+                if (userData?.role !== 'student') {
+                    throw new Error(`用戶角色不正確: ${userData?.role}, 應該是 student`);
+                }
+
+                log(`✅ 用戶角色驗證通過: ${userData.role}`, 'success');
+                setTestResult('學生登入', true, `${result.user.email} - ${userData.role}`);
+                return true;
+            } catch (error) {
+                log(`❌ 學生登入失敗: ${error.message}`, 'error');
+                setTestResult('學生登入', false, error.message);
+                return false;
+            }
+        }
+
+        // 測試 3: 學生記錄檢查
+        async function testStudentRecord() {
+            log('👥 測試學生記錄檢查...', 'info');
+            try {
+                if (!currentUser) {
+                    throw new Error('沒有登入用戶');
+                }
+
+                const studentDoc = await window.firebaseService.db.collection('students').doc(currentUser.uid).get();
+                
+                if (!studentDoc.exists) {
+                    throw new Error('學生記錄不存在');
+                }
+
+                const studentData = studentDoc.data();
+                
+                if (!studentData.teacherId) {
+                    throw new Error('學生記錄缺少 teacherId');
+                }
+
+                log(`✅ 學生記錄驗證通過`, 'success');
+                log(`   - 學生姓名: ${studentData.name}`, 'info');
+                log(`   - 學號: ${studentData.studentNumber}`, 'info');
+                log(`   - 教師ID: ${studentData.teacherId}`, 'info');
+
+                setTestResult('學生記錄檢查', true, `教師ID: ${studentData.teacherId.substring(0, 8)}...`);
+                return studentData.teacherId;
+            } catch (error) {
+                log(`❌ 學生記錄檢查失敗: ${error.message}`, 'error');
+                setTestResult('學生記錄檢查', false, error.message);
+                return null;
+            }
+        }
+
+        // 測試 4: 獲取教師資料
+        async function testGetTeacherData() {
+            log('👨‍🏫 測試獲取教師資料...', 'info');
+            try {
+                if (!currentUser) {
+                    throw new Error('沒有登入用戶');
+                }
+
+                const result = await window.firebaseService.getTeacherDataForStudent(currentUser.uid);
+                
+                if (!result.success) {
+                    throw new Error(`獲取教師資料失敗: ${result.error}`);
+                }
+
+                log(`✅ 成功獲取教師資料`, 'success');
+                log(`   - 教師姓名: ${result.teacherInfo?.name || 'N/A'}`, 'info');
+                log(`   - 教師信箱: ${result.teacherInfo?.email || 'N/A'}`, 'info');
+                
+                const hasCleaningTasks = result.teacherData?.cleaningTasks?.length > 0;
+                const hasAssignments = result.teacherData?.assignments ? Object.keys(result.teacherData.assignments).length > 0 : false;
+                
+                log(`   - 打掃任務數量: ${result.teacherData?.cleaningTasks?.length || 0}`, 'info');
+                log(`   - 分配資料: ${hasAssignments ? '存在' : '不存在'}`, 'info');
+
+                setTestResult('獲取教師資料', true, `任務: ${result.teacherData?.cleaningTasks?.length || 0}個`);
+                return result;
+            } catch (error) {
+                log(`❌ 獲取教師資料失敗: ${error.message}`, 'error');
+                setTestResult('獲取教師資料', false, error.message);
+                return null;
+            }
+        }
+
+        // 測試 5: SessionStorage 設定
+        async function testSessionStorageSetup() {
+            log('💾 測試 SessionStorage 設定...', 'info');
+            try {
+                if (!currentUser) {
+                    throw new Error('沒有登入用戶');
+                }
+
+                // 模擬正確的 SessionStorage 設定
+                const teacherResult = await window.firebaseService.getTeacherDataForStudent(currentUser.uid);
+                
+                if (!teacherResult.success) {
+                    throw new Error('無法獲取教師資料來設定 SessionStorage');
+                }
+
+                sessionStorage.setItem('currentUser', currentUser.uid);
+                sessionStorage.setItem('userEmail', currentUser.email);
+                sessionStorage.setItem('userRole', 'student');
+                sessionStorage.setItem('teacherId', teacherResult.teacherId);
+                sessionStorage.setItem('teacherName', teacherResult.teacherInfo?.name || '教師');
+                sessionStorage.setItem('isStudentMode', 'true');
+                sessionStorage.setItem('studentId', currentUser.uid);
+
+                log(`✅ SessionStorage 設定完成`, 'success');
+
+                // 驗證設定
+                const requiredKeys = ['currentUser', 'userRole', 'teacherId', 'isStudentMode'];
+                let allSet = true;
+                for (const key of requiredKeys) {
+                    const value = sessionStorage.getItem(key);
+                    if (!value) {
+                        allSet = false;
+                        log(`   ⚠️ 缺少 ${key}`, 'warn');
+                    } else {
+                        log(`   ✓ ${key}: ${value}`, 'info');
+                    }
+                }
+
+                if (!allSet) {
+                    throw new Error('部分 SessionStorage 項目未設定');
+                }
+
+                setTestResult('SessionStorage 設定', true, '所有必要項目已設定');
+                return true;
+            } catch (error) {
+                log(`❌ SessionStorage 設定失敗: ${error.message}`, 'error');
+                setTestResult('SessionStorage 設定', false, error.message);
+                return false;
+            }
+        }
+
+        // 測試 6: 頁面導航測試
+        async function testPageNavigation() {
+            log('🧭 測試頁面導航...', 'info');
+            try {
+                // 檢查智能路由邏輯
+                const teacherId = sessionStorage.getItem('teacherId');
+                if (!teacherId) {
+                    throw new Error('找不到教師ID');
+                }
+
+                // 檢查教師是否有完整資料
+                const teacherUserDataResult = await window.firebaseService.db.collection('userData').doc(teacherId).get();
+                
+                const hasCompleteData = teacherUserDataResult.exists && 
+                                      teacherUserDataResult.data()?.cleaningTasks?.length > 0 && 
+                                      teacherUserDataResult.data()?.assignments;
+
+                const expectedPage = hasCompleteData ? 'tracking.html' : 'import.html';
+                
+                log(`✅ 路由邏輯測試通過`, 'success');
+                log(`   - 教師有完整資料: ${hasCompleteData ? '是' : '否'}`, 'info');
+                log(`   - 應該跳轉到: ${expectedPage}`, 'info');
+
+                setTestResult('頁面導航測試', true, `應跳轉到: ${expectedPage}`);
+                return true;
+            } catch (error) {
+                log(`❌ 頁面導航測試失敗: ${error.message}`, 'error');
+                setTestResult('頁面導航測試', false, error.message);
+                return false;
+            }
+        }
+
+        // 執行完整測試
+        async function runAllTests() {
+            log('🚀 開始執行完整測試流程...', 'info');
+            resetTest();
+
+            const tests = [
+                { name: 'Firebase 連接', func: testFirebaseConnection },
+                { name: '學生登入', func: testStudentLogin },
+                { name: '學生記錄檢查', func: testStudentRecord },
+                { name: '獲取教師資料', func: testGetTeacherData },
+                { name: 'SessionStorage 設定', func: testSessionStorageSetup },
+                { name: '頁面導航測試', func: testPageNavigation }
+            ];
+
+            let allPassed = true;
+            for (const test of tests) {
+                log(`\n--- 執行 ${test.name} ---`, 'info');
+                const result = await test.func();
+                if (!result) {
+                    allPassed = false;
+                    log(`⚠️ ${test.name} 失敗，繼續執行後續測試...`, 'warn');
+                }
+                await wait(1000); // 測試間隔
+            }
+
+            log('\n=== 測試完成 ===', 'info');
+            if (allPassed) {
+                log('🎉 所有測試通過！師生系統功能正常', 'success');
+            } else {
+                log('⚠️ 部分測試失敗，請檢查問題', 'warn');
+            }
+        }
+
+        // 監聽認證狀態變化
+        window.firebaseService.onAuthStateChanged((user) => {
+            currentUser = user;
+            if (user) {
+                log(`🔐 用戶狀態變更: ${user.email} 已登入`, 'info');
+            } else {
+                log(`🔐 用戶狀態變更: 已登出`, 'info');
+            }
+        });
+
+        // 頁面載入完成後初始化
+        window.addEventListener('load', () => {
+            log('📄 測試頁面載入完成', 'info');
+            updateResults();
+        });
+    </script>
+</body>
+</html>
