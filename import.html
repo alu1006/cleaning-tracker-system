@@ -26,24 +26,126 @@
     <div class="container">
         <div class="step-container">
             <h2>步驟一：匯入打掃名單</h2>
-            <div class="upload-section">
+            <div class="import-method-tabs">
+                <button id="excelImportTab" class="tab-btn active" onclick="switchImportMethod('excel')">
+                    📋 Excel 匯入
+                </button>
+                <button id="manualImportTab" class="tab-btn" onclick="switchImportMethod('manual')">
+                    ✏️ 手動建立
+                </button>
+            </div>
+            
+            <div id="excelImportSection" class="upload-section">
                 <input type="file" id="cleaningListFile" accept=".xlsx,.xls" class="file-input">
                 <label for="cleaningListFile" class="file-label">
                     📋 選擇打掃名單.xlsx
                 </label>
-                <div id="cleaningPreview" class="preview-section"></div>
             </div>
+            
+            <div id="manualImportSection" class="manual-entry-section" style="display: none;">
+                <div class="manual-form">
+                    <h3>手動建立打掃任務</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>分頁/區域：</label>
+                            <input type="text" id="newTaskSheet" placeholder="例如：B1-2F">
+                        </div>
+                        <div class="form-group">
+                            <label>事項名稱：</label>
+                            <input type="text" id="newTaskName" placeholder="例如：掃地拖地">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>詳細位置：</label>
+                            <input type="text" id="newTaskDetail" placeholder="例如：教室內部地板">
+                        </div>
+                        <div class="form-group">
+                            <label>清潔標準：</label>
+                            <input type="text" id="newTaskStandard" placeholder="例如：無垃圾、無灰塵">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>需要人數：</label>
+                            <input type="number" id="newTaskCount" value="1" min="1" max="10">
+                        </div>
+                        <div class="form-group">
+                            <button id="addTaskBtn" class="primary-btn" onclick="addManualCleaningTask()">
+                                ➕ 新增任務
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="quick-templates">
+                    <h4>快速範本</h4>
+                    <div class="template-buttons">
+                        <button class="template-btn" onclick="useTemplate('classroom')">
+                            🏫 教室清潔
+                        </button>
+                        <button class="template-btn" onclick="useTemplate('corridor')">
+                            🚪 走廊清潔
+                        </button>
+                        <button class="template-btn" onclick="useTemplate('toilet')">
+                            🚽 廁所清潔
+                        </button>
+                        <button class="template-btn" onclick="useTemplate('stairs')">
+                            📶 樓梯清潔
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="cleaningPreview" class="preview-section"></div>
         </div>
 
         <div class="step-container">
             <h2>步驟二：匯入學生名單</h2>
-            <div class="upload-section">
+            <div class="import-method-tabs">
+                <button id="studentExcelTab" class="tab-btn active" onclick="switchStudentMethod('excel')">
+                    📋 Excel 匯入
+                </button>
+                <button id="studentManualTab" class="tab-btn" onclick="switchStudentMethod('manual')">
+                    ✏️ 手動建立
+                </button>
+            </div>
+            
+            <div id="studentExcelSection" class="upload-section">
                 <input type="file" id="studentListFile" accept=".xlsx,.xls" class="file-input">
                 <label for="studentListFile" class="file-label">
                     👥 選擇學生名單.xlsx
                 </label>
-                <div id="studentPreview" class="preview-section"></div>
             </div>
+            
+            <div id="studentManualSection" class="manual-entry-section" style="display: none;">
+                <div class="manual-form">
+                    <h3>手動建立學生名單</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>學號：</label>
+                            <input type="text" id="newStudentId" placeholder="例如：412101">
+                        </div>
+                        <div class="form-group">
+                            <label>姓名：</label>
+                            <input type="text" id="newStudentName" placeholder="例如：王小明">
+                        </div>
+                        <div class="form-group">
+                            <button id="addStudentBtn" class="primary-btn" onclick="addManualStudent()">
+                                ➕ 新增學生
+                            </button>
+                        </div>
+                    </div>
+                    <div class="batch-entry">
+                        <h4>批量輸入</h4>
+                        <textarea id="batchStudentInput" placeholder="貼上學生名單，每行一位學生，格式：學號 姓名&#10;例如：&#10;412101 王小明&#10;412102 李小華&#10;412103 陳小美" rows="5"></textarea>
+                        <button class="secondary-btn" onclick="batchAddStudents()">
+                            📝 批量新增
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="studentPreview" class="preview-section"></div>
         </div>
 
         <div class="step-container" id="assignmentSection" style="display: none;">
@@ -927,9 +1029,251 @@
             }
         }
 
+        // 切換匯入方式
+        function switchImportMethod(method) {
+            const excelSection = document.getElementById('excelImportSection');
+            const manualSection = document.getElementById('manualImportSection');
+            const excelTab = document.getElementById('excelImportTab');
+            const manualTab = document.getElementById('manualImportTab');
+            
+            if (method === 'excel') {
+                excelSection.style.display = 'block';
+                manualSection.style.display = 'none';
+                excelTab.classList.add('active');
+                manualTab.classList.remove('active');
+            } else {
+                excelSection.style.display = 'none';
+                manualSection.style.display = 'block';
+                excelTab.classList.remove('active');
+                manualTab.classList.add('active');
+            }
+        }
+        
+        function switchStudentMethod(method) {
+            const excelSection = document.getElementById('studentExcelSection');
+            const manualSection = document.getElementById('studentManualSection');
+            const excelTab = document.getElementById('studentExcelTab');
+            const manualTab = document.getElementById('studentManualTab');
+            
+            if (method === 'excel') {
+                excelSection.style.display = 'block';
+                manualSection.style.display = 'none';
+                excelTab.classList.add('active');
+                manualTab.classList.remove('active');
+            } else {
+                excelSection.style.display = 'none';
+                manualSection.style.display = 'block';
+                excelTab.classList.remove('active');
+                manualTab.classList.add('active');
+            }
+        }
+        
+        // 手動新增打掃任務
+        function addManualCleaningTask() {
+            const sheet = document.getElementById('newTaskSheet').value.trim();
+            const name = document.getElementById('newTaskName').value.trim();
+            const detail = document.getElementById('newTaskDetail').value.trim();
+            const standard = document.getElementById('newTaskStandard').value.trim();
+            const count = parseInt(document.getElementById('newTaskCount').value) || 1;
+            
+            if (!sheet || !name) {
+                alert('請填寫分頁/區域和事項名稱');
+                return;
+            }
+            
+            const newTask = {
+                '事項': name,
+                '詳細': detail,
+                '標準': standard,
+                '人數': count,
+                '分頁': sheet,
+                '完整事項': `[${sheet}] ${name}`
+            };
+            
+            cleaningData.push(newTask);
+            
+            // 清空表單
+            document.getElementById('newTaskSheet').value = '';
+            document.getElementById('newTaskName').value = '';
+            document.getElementById('newTaskDetail').value = '';
+            document.getElementById('newTaskStandard').value = '';
+            document.getElementById('newTaskCount').value = '1';
+            
+            // 更新預覽
+            displayCleaningPreview();
+            checkIfCanAssign();
+            
+            console.log('手動新增任務:', newTask);
+        }
+        
+        // 使用範本
+        function useTemplate(type) {
+            const templates = {
+                'classroom': {
+                    sheet: '教室',
+                    tasks: [
+                        { name: '掃地拖地', detail: '教室內部地板', standard: '無垃圾、無灰塵', count: 2 },
+                        { name: '擦黑板', detail: '黑板及粉筆槽', standard: '乾淨無粉筆痕跡', count: 1 },
+                        { name: '整理桌椅', detail: '排列桌椅', standard: '整齊排列', count: 2 },
+                        { name: '倒垃圾', detail: '垃圾桶及回收桶', standard: '清空並換新垃圾袋', count: 1 }
+                    ]
+                },
+                'corridor': {
+                    sheet: '走廊',
+                    tasks: [
+                        { name: '掃地拖地', detail: '走廊地板', standard: '無垃圾、無灰塵', count: 3 },
+                        { name: '擦窗戶', detail: '走廊窗戶', standard: '玻璃清潔透明', count: 2 },
+                        { name: '整理公布欄', detail: '公告欄及展示區', standard: '整齊美觀', count: 1 }
+                    ]
+                },
+                'toilet': {
+                    sheet: '廁所',
+                    tasks: [
+                        { name: '清洗馬桶', detail: '馬桶內外', standard: '乾淨無異味', count: 1 },
+                        { name: '拖洗地板', detail: '廁所地板', standard: '乾燥清潔', count: 1 },
+                        { name: '補充用品', detail: '衛生紙、洗手乳', standard: '充足供應', count: 1 },
+                        { name: '清理洗手台', detail: '洗手台及鏡子', standard: '無水垢、無污漬', count: 1 }
+                    ]
+                },
+                'stairs': {
+                    sheet: '樓梯',
+                    tasks: [
+                        { name: '掃樓梯', detail: '樓梯台階', standard: '無垃圾、無灰塵', count: 2 },
+                        { name: '擦扶手', detail: '扶手欄杆', standard: '乾淨無污垢', count: 1 },
+                        { name: '清理轉角', detail: '樓梯轉角區域', standard: '整潔無雜物', count: 1 }
+                    ]
+                }
+            };
+            
+            const template = templates[type];
+            if (template) {
+                template.tasks.forEach(task => {
+                    const newTask = {
+                        '事項': task.name,
+                        '詳細': task.detail,
+                        '標準': task.standard,
+                        '人數': task.count,
+                        '分頁': template.sheet,
+                        '完整事項': `[${template.sheet}] ${task.name}`
+                    };
+                    cleaningData.push(newTask);
+                });
+                
+                displayCleaningPreview();
+                checkIfCanAssign();
+                
+                alert(`已新增 ${template.tasks.length} 個${template.sheet}清潔任務`);
+                console.log(`使用範本: ${type}，新增 ${template.tasks.length} 個任務`);
+            }
+        }
+        
+        // 手動新增學生
+        function addManualStudent() {
+            const studentId = document.getElementById('newStudentId').value.trim();
+            const studentName = document.getElementById('newStudentName').value.trim();
+            
+            if (!studentId || !studentName) {
+                alert('請填寫學號和姓名');
+                return;
+            }
+            
+            // 檢查是否重複
+            const exists = studentData.some(student => 
+                student['學號'] === studentId || 
+                (student['學號'] === studentId && student['姓名'] === studentName)
+            );
+            
+            if (exists) {
+                alert('此學號已存在，請檢查後重新輸入');
+                return;
+            }
+            
+            const newStudent = {
+                '學號': studentId,
+                '姓名': studentName
+            };
+            
+            studentData.push(newStudent);
+            
+            // 清空表單
+            document.getElementById('newStudentId').value = '';
+            document.getElementById('newStudentName').value = '';
+            
+            // 更新預覽
+            displayStudentPreview();
+            checkIfCanAssign();
+            
+            console.log('手動新增學生:', newStudent);
+        }
+        
+        // 批量新增學生
+        function batchAddStudents() {
+            const batchText = document.getElementById('batchStudentInput').value.trim();
+            
+            if (!batchText) {
+                alert('請輸入學生資料');
+                return;
+            }
+            
+            const lines = batchText.split('\n').filter(line => line.trim());
+            let addedCount = 0;
+            let errorCount = 0;
+            
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 2) {
+                    const studentId = parts[0];
+                    const studentName = parts.slice(1).join(' ');
+                    
+                    // 檢查是否重複
+                    const exists = studentData.some(student => 
+                        student['學號'] === studentId
+                    );
+                    
+                    if (!exists) {
+                        const newStudent = {
+                            '學號': studentId,
+                            '姓名': studentName
+                        };
+                        studentData.push(newStudent);
+                        addedCount++;
+                    } else {
+                        errorCount++;
+                        console.warn('學號重複，跳過:', studentId, studentName);
+                    }
+                } else {
+                    errorCount++;
+                    console.warn('格式錯誤，跳過:', line);
+                }
+            });
+            
+            // 清空輸入框
+            document.getElementById('batchStudentInput').value = '';
+            
+            // 更新預覽
+            if (addedCount > 0) {
+                displayStudentPreview();
+                checkIfCanAssign();
+            }
+            
+            alert(`批量新增完成！\n成功: ${addedCount} 位學生\n跳過: ${errorCount} 筆資料`);
+            console.log(`批量新增學生: 成功 ${addedCount}，跳過 ${errorCount}`);
+        }
+        
         // 頁面載入時檢查現有資料
         window.addEventListener('load', function() {
             loadExistingData();
+        });
+        
+        // Enter鍵快速新增
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                if (e.target.id === 'newTaskCount') {
+                    addManualCleaningTask();
+                } else if (e.target.id === 'newStudentName') {
+                    addManualStudent();
+                }
+            }
         });
     </script>
 </body>
