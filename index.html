@@ -211,9 +211,25 @@
                                 const userRole = userData.role || 'user';
                                 
                                 if (userRole === 'teacher') {
-                                    // 教師跳轉到學生管理頁面
-                                    console.log('教師登入，跳轉到學生管理頁面');
-                                    window.location.href = 'student-management.html';
+                                    // 教師：檢查是否有匯入資料決定跳轉
+                                    console.log('教師登入，檢查是否有匯入資料...');
+                                    
+                                    try {
+                                        const userDataResult = await firebase.firestore().collection('userData').doc(result.user.uid).get();
+                                        
+                                        if (userDataResult.exists && 
+                                            userDataResult.data()?.cleaningTasks?.length > 0 && 
+                                            userDataResult.data()?.assignments) {
+                                            console.log('教師有完整資料，跳轉到追蹤頁面');
+                                            window.location.href = 'tracking.html';
+                                        } else {
+                                            console.log('教師無完整資料，跳轉到匯入頁面');
+                                            window.location.href = 'import.html';
+                                        }
+                                    } catch (error) {
+                                        console.warn('無法檢查教師資料:', error);
+                                        window.location.href = 'import.html'; // 預設到匯入頁面
+                                    }
                                 } else if (userRole === 'student') {
                                     // 學生用戶：檢查是否有關聯教師的資料
                                     console.log('學生登入，檢查教師資料...');
@@ -234,9 +250,23 @@
                                             sessionStorage.setItem('studentName', teacherDataResult.studentInfo?.name || '學生');
                                             sessionStorage.setItem('studentNumber', teacherDataResult.studentInfo?.studentNumber || '');
                                             
-                                            // 學生總是跳轉到追蹤頁面，不管教師是否有資料
-                                            console.log('學生登入成功，跳轉到追蹤頁面（學生模式）');
-                                            window.location.href = 'tracking.html';
+                                            // 檢查教師是否有匯入資料來決定跳轉
+                                            try {
+                                                const teacherUserDataResult = await firebase.firestore().collection('userData').doc(teacherDataResult.teacherId).get();
+                                                
+                                                if (teacherUserDataResult.exists && 
+                                                    teacherUserDataResult.data()?.cleaningTasks?.length > 0 && 
+                                                    teacherUserDataResult.data()?.assignments) {
+                                                    console.log('教師有完整資料，學生跳轉到追蹤頁面');
+                                                    window.location.href = 'tracking.html';
+                                                } else {
+                                                    console.log('教師無完整資料，學生跳轉到匯入頁面（查看模式）');
+                                                    window.location.href = 'import.html';
+                                                }
+                                            } catch (error) {
+                                                console.warn('無法檢查教師資料，跳轉到匯入頁面:', error);
+                                                window.location.href = 'import.html';
+                                            }
                                         } else {
                                             console.log('學生沒有關聯教師，錯誤:', teacherDataResult.error);
                                             alert('學生帳號設定錯誤：' + teacherDataResult.error + '\n請聯絡教師確認帳號設定。');
