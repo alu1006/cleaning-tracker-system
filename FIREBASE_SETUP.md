@@ -62,7 +62,7 @@ service cloud.firestore {
 ```
 
 ### 3. 建立使用者帳號
-1. 開啟 `login.html`
+1. 開啟 `index.html`
 2. 點擊「註冊新帳號」
 3. 輸入電子信箱和密碼
 4. **建議的管理員帳號**：

@@ -116,12 +116,12 @@
                 await loadUserInfo();
                 if (userRole !== 'teacher' && userRole !== 'admin') {
                     alert('權限不足，僅教師和管理員可以存取學生管理功能');
-                    window.location.href = 'login.html';
+                    window.location.href = 'index.html';
                     return;
                 }
                 await loadStudents();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         });
 
@@ -379,7 +379,7 @@
         function logout() {
             window.firebaseService.signOut().then(() => {
                 sessionStorage.clear();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             });
         }
     </script>
@@ -495,7 +495,7 @@
                 currentUser = user;
                 loadUserInfo();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         });
 
@@ -847,7 +847,7 @@
             try {
                 await window.firebaseService.signOut();
                 sessionStorage.clear();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             } catch (error) {
                 console.error('登出錯誤:', error);
                 alert('登出失敗，請稍後再試');

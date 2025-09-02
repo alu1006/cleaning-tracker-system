@@ -9,7 +9,7 @@ This is a **Teacher-Student Cleaning Tracking System** (師生打掃追蹤系統
 ## Architecture & Core Components
 
 ### Multi-Page Application Structure
-- **login.html** - Authentication entry point with Google OAuth and role-based routing
+- **index.html** - Authentication entry point with Google OAuth and role-based routing
 - **student-management.html** - Teacher interface for creating and managing student accounts
 - **import.html** - Excel data import and assignment management (teacher/student shared view)
 - **tracking.html** - Daily tracking interface with role-based permissions
@@ -64,7 +64,7 @@ Uses Firebase v9 (compatibility mode) with enhanced features:
 ### Debugging & Development Tools
 Development utilities for troubleshooting:
 - **debug-student-creation.html** - Debug student account creation flow
-- **debug-student-login.html** - Test student authentication
+- **debug-student-index.html** - Test student authentication
 - **debug-student-teacher-data.html** - Verify teacher-student data sharing
 - **fix-student-records.html** - Repair student record relationships
 - **fix-user-roles.html** - Fix user role assignments
@@ -75,14 +75,14 @@ Development utilities for troubleshooting:
 ### Testing the Application
 ```bash
 # Test core functionality
-open login.html                    # Test Google OAuth and student login
+open index.html                    # Test Google OAuth and student login
 open student-management.html       # Test teacher account management
 open import.html                   # Test data import (both roles)
 open tracking.html                 # Test tracking with role permissions
 
 # Debug and development tools
 open debug-student-creation.html   # Debug student creation issues
-open debug-student-login.html      # Debug student authentication
+open debug-student-index.html      # Debug student authentication
 open test-firebase.html           # Test Firebase connectivity
 open fix-user-roles.html          # Fix role assignment issues
 ```

@@ -159,7 +159,7 @@
                 
                 if (userRole !== 'teacher') {
                     alert('權限不足，僅教師可以存取學生管理功能');
-                    window.location.href = 'login.html';
+                    window.location.href = 'index.html';
                     return;
                 }
                 
@@ -185,7 +185,7 @@
                 console.log('🔄 開始載入學生列表...');
                 await loadStudents();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         });
 
@@ -1024,7 +1024,7 @@
         function logout() {
             window.firebaseService.signOut().then(() => {
                 sessionStorage.clear();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             });
         }
     </script>

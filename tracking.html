@@ -93,7 +93,7 @@
                 currentUser = user;
                 await loadUserInfo();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         });
         
@@ -450,7 +450,7 @@
             try {
                 await window.firebaseService.signOut();
                 sessionStorage.clear();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             } catch (error) {
                 console.error('登出錯誤:', error);
                 alert('登出失敗，請稍後再試');

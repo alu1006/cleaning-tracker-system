@@ -90,7 +90,7 @@
                 await loadUserInfo();
                 await loadAllAccounts();
             } else {
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         });
 
@@ -110,7 +110,7 @@
             } catch (error) {
                 console.error('檢查權限錯誤:', error);
                 alert('❌ 無法驗證權限，請重新登入');
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         }
 
@@ -280,7 +280,7 @@
         async function logout() {
             try {
                 await window.firebaseService.signOut();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             } catch (error) {
                 console.error('登出錯誤:', error);
                 alert('登出失敗，請稍後再試');
